@@ -183,6 +183,7 @@ input.txt{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;
     <span class="pill hide-m" id="hWorkers"></span>
     <span class="pill" id="hOutbox"></span>
     <span class="pill hide-m" id="hVersion"></span>
+    <button class="iconbtn" id="rulesBtn" title="Always-allow rules">Rules</button>
     <button class="iconbtn" id="notifBtn" title="Browser notifications">🔔</button>
     <button class="iconbtn" id="themeBtn" title="Toggle theme">◐</button>
   </div>
@@ -315,8 +316,9 @@ function renderChat(scroll){
   $("#capPend").innerHTML=S.captain_pending.map(p=>`<div class="box need cap-pend"><h4>❓ ${esc(p.question)}</h4>
     ${p.detail?`<pre>${esc(p.detail)}</pre>`:""}
     <div class="actions"><button class="btn pri" data-cp="${p.id}" data-cp-allow="1">${p.kind==="type"?"Approve type":"Allow"}</button>
-    <button class="btn" data-cp="${p.id}" data-cp-allow="0">${p.kind==="type"?"Reject":"Deny"}</button></div><div class="err" id="err-${p.id}"></div></div>`).join("");
+    ${p.kind==="tool"?alwaysBtn(p,"data-cp-always"):""}<button class="btn" data-cp="${p.id}" data-cp-allow="0">${p.kind==="type"?"Reject":"Deny"}</button></div><div class="err" id="err-${p.id}"></div></div>`).join("");
   $("#capPend").querySelectorAll("[data-cp]").forEach(b=>b.onclick=()=>act(()=>api("/api/captain/decide",{pending_id:b.dataset.cp,allow:b.dataset.cpAllow==="1"}),"err-"+b.dataset.cp));
+  $("#capPend").querySelectorAll("[data-cp-always]").forEach(b=>b.onclick=()=>act(()=>api("/api/captain/decide",{pending_id:b.dataset.cpAlways,allow:true,always:true}),"err-"+b.dataset.cpAlways));
 }
 async function sendChat(){
   const v=$("#input").value.trim(); if(!v) return;
@@ -356,13 +358,19 @@ function outboxCard(t,o,withActions,pendingId){
   const acts=withActions&&!ed?`<div class="actions"><button class="btn pri" data-post="${pendingId}">Post</button><button class="btn" data-edit="${o.id}">Edit</button><button class="btn" data-skip="${pendingId}">Skip</button></div>`:"";
   return `<div class="cmt">${head.replace("slk-to","slk-to cmt-h")}<div class="cmt-b">${body}${o.edited?'<div class="small">edited by you</div>':""}${st}${o.result?`<div class="small">${esc(o.result)}</div>`:""}${acts}</div></div>`;
 }
+const RULE_LABEL={"http-write":"sending data to","remote-shell":"ssh to","remote-copy":"copying to/from","db-write":"database writes on",
+  "redis-write":"Redis writes on","aws-write":"AWS changes in","edit-outside":"edits in","mcp-write":"the tool","github-write":"GitHub changes",
+  "k8s-write":"Kubernetes changes","infra-write":"infrastructure changes","publish":"publishing","deploy":"deploy commands","ci":"CI jobs",
+  "secret-read":"reading secrets","main-checkout":"git changes in the main checkout"};
+function ruleText(kind,subject){ return (RULE_LABEL[kind]||kind)+(subject&&subject!=="unknown"?" "+subject:""); }
+function alwaysBtn(p,attr){ return p.rule_kind?`<button class="btn" ${attr}="${p.id}" title="Saved in ~/.oscar/allow.json; remove it under Rules">Always allow ${esc(ruleText(p.rule_kind,p.rule_subject))}</button>`:""; }
 function pendingHtml(t,p){
   const err=`<div class="err" id="err-${p.id}"></div>`;
   if(p.kind==="question") return `<div class="box need"><h4>❓ ${esc(p.question)}</h4>
     ${(p.options||[]).map((o,i)=>`<button class="btn opt ${i===0?"pri":""}" data-opt="${p.id}" data-v="${esc(o)}">${esc(o)}</button>`).join("")}
     <div class="row" style="margin-top:6px"><input class="txt" id="ans-${p.id}" placeholder="Or type an answer"><button class="btn" data-ans="${p.id}">Send</button></div>${err}</div>`;
   if(p.kind==="tool") return `<div class="box need"><h4>❓ ${esc(p.question)}</h4><pre>${esc(p.detail)}</pre>
-    <div class="row" style="margin-top:8px"><button class="btn pri" data-allow="${p.id}">Allow once</button><input class="txt" id="note-${p.id}" placeholder="Note for the worker (optional)"><button class="btn" data-deny="${p.id}">Deny</button></div>${err}</div>`;
+    <div class="row" style="margin-top:8px"><button class="btn pri" data-allow="${p.id}">Allow once</button>${alwaysBtn(p,"data-always")}<input class="txt" id="note-${p.id}" placeholder="Note for the worker (optional)"><button class="btn" data-deny="${p.id}">Deny</button></div>${err}</div>`;
   if(p.kind==="plan"){ const cmds=Array.isArray(p.input)?p.input:[];
     return `<div class="box need"><h4>❓ ${esc(p.question)}</h4><pre>${esc(p.detail)}</pre>
     <div class="small" style="margin:8px 0 4px">Commands that will run without asking again:</div><pre>${esc((Array.isArray(cmds)?cmds:[]).join("\n"))}</pre>
@@ -403,7 +411,17 @@ function renderLog(){
   box.innerHTML=L.slice(-800).map(l=>`<span class="t">${new Date(l.at).toTimeString().slice(0,8)} ${esc(l.who)}</span>  ${esc(l.text)}`).join("\n");
   box.scrollTop=box.scrollHeight;
 }
+async function renderRules(){
+  const rules=await api("/api/allow").catch(()=>[]);
+  $("#detail").innerHTML=`<div class="dhead"><button class="back" onclick="showCol('colBoard')">← Board</button><h3>Always-allow rules</h3>
+    <div class="meta">Calls that match a rule run without asking. Hard denies (push, posting yourself) can never be allowed.</div></div>
+    <div class="pane">${rules.length?rules.map(x=>`<div class="box"><div class="row"><b>${esc(ruleText(x.kind,x.subject))}</b><span class="small">${new Date(x.at).toLocaleString()}</span>
+      <button class="btn sm" style="margin-left:auto" data-rm-kind="${esc(x.kind)}" data-rm-subject="${esc(x.subject)}">Remove</button></div>
+      ${x.example?`<pre style="margin-top:6px">${esc(x.example)}</pre>`:""}</div>`).join(""):'<div class="empty">No rules yet. Use "Always allow" on an approval.</div>'}</div>`;
+  $("#detail").querySelectorAll("[data-rm-kind]").forEach(b=>b.onclick=()=>act(async()=>{await api("/api/allow/remove",{kind:b.dataset.rmKind,subject:b.dataset.rmSubject});renderRules();}));
+}
 function renderDetail(){
+  if(selected==="rules"){ renderRules(); return; }
   const t=task(selected);
   if(!t){ $("#detail").innerHTML='<div class="empty">Pick a task on the board</div>'; return; }
   const tabs=tabsFor(t); if(!tabs.includes(tab)) tab="summary";
@@ -428,6 +446,7 @@ function bindDetail(t){
   on("[data-opt]",b=>decide(t,b.dataset.opt,{option:b.dataset.v}));
   on("[data-ans]",b=>decide(t,b.dataset.ans,{text:$("#ans-"+b.dataset.ans).value}));
   on("[data-allow]",b=>decide(t,b.dataset.allow,{allow:true}));
+  on("[data-always]",b=>decide(t,b.dataset.always,{allow:true,always:true}));
   on("[data-deny]",b=>decide(t,b.dataset.deny,{allow:false,text:($("#note-"+b.dataset.deny)||{}).value||""}));
   on("[data-post]",b=>decide(t,b.dataset.post,{allow:true}));
   on("[data-skip]",b=>decide(t,b.dataset.skip,{allow:false}));
@@ -458,6 +477,7 @@ $("#input").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey&&!e.
 $("#input").addEventListener("input",autoGrow);
 $("#themeBtn").onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme: dark)").matches;r.dataset.theme=dark?"light":"dark";try{localStorage.setItem("oscar.theme",r.dataset.theme)}catch{}};
 try{const th=localStorage.getItem("oscar.theme"); if(th) document.documentElement.dataset.theme=th;}catch{}
+$("#rulesBtn").onclick=()=>{ selected="rules"; renderBoard(); renderRules(); if(isMobile()) showCol("colDetail"); };
 $("#notifBtn").onclick=()=>{ if(window.Notification) Notification.requestPermission().then(p=>toast("Notifications",p)); };
 function fromHash(){ const id=decodeURIComponent(location.hash.slice(1)); if(id&&task(id)){ const g=task(id).status; collapsed[g]=false; select(id); } }
 window.addEventListener("hashchange",fromHash);

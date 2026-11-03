@@ -43,11 +43,25 @@ type Context struct {
 	WriteRoots []string // absolute dirs this session may edit freely
 	RepoRoots  []string // main checkouts; mutating git there is gated
 	ServerName string   // our in-process MCP server, e.g. "oscar"
+	// Allowed reports whether the user chose "Always allow" for this kind of gate and subject.
+	Allowed func(kind, subject string) bool
 }
 
 type Decision struct {
 	Action Action
 	Reason string
+	// Kind and Subject describe a gate so the user can "Always allow" it,
+	// e.g. Kind "remote-shell", Subject "jump.example.com". Empty when not a gate.
+	Kind    string
+	Subject string
+}
+
+// gate builds a Gate decision, or Allow when the user always allows this kind and subject.
+func gate(c Context, kind, subject, reason string) Decision {
+	if c.Allowed != nil && c.Allowed(kind, subject) {
+		return Decision{Allow, "always allowed by you: " + reason, kind, subject}
+	}
+	return Decision{Gate, reason, kind, subject}
 }
 
 var readOnlyTools = map[string]bool{
@@ -73,13 +87,13 @@ var mcpReadVerb = regexp.MustCompile(`(?i)(^|_)(read|get|list|search|query|fetch
 // Check classifies one tool call.
 func Check(c Context, tool string, input json.RawMessage) Decision {
 	if c.ServerName != "" && strings.HasPrefix(tool, "mcp__"+c.ServerName+"__") {
-		return Decision{Allow, "oscar tool"}
+		return Decision{Action: Allow, Reason: "oscar tool"}
 	}
 	if msg, ok := blockedTools[tool]; ok {
-		return Decision{Deny, msg}
+		return Decision{Action: Deny, Reason: msg}
 	}
 	if readOnlyTools[tool] {
-		return Decision{Allow, "read-only tool"}
+		return Decision{Action: Allow, Reason: "read-only tool"}
 	}
 	if editTools[tool] {
 		return checkEdit(c, input)
@@ -94,11 +108,11 @@ func Check(c Context, tool string, input json.RawMessage) Decision {
 	if strings.HasPrefix(tool, "mcp__") {
 		name := tool[strings.LastIndex(tool, "__")+2:]
 		if mcpReadVerb.MatchString(name) {
-			return Decision{Allow, "read-only MCP tool"}
+			return Decision{Action: Allow, Reason: "read-only MCP tool"}
 		}
-		return Decision{Gate, "MCP tool that may change something outside: " + tool}
+		return gate(c, "mcp-write", tool, "MCP tool that may change something outside: "+tool)
 	}
-	return Decision{Pass, ""}
+	return Decision{Action: Pass, Reason: ""}
 }
 
 func checkEdit(c Context, input json.RawMessage) Decision {
@@ -112,18 +126,27 @@ func checkEdit(c Context, input json.RawMessage) Decision {
 		p = in.NotebookPath
 	}
 	if p == "" {
-		return Decision{Gate, "edit without a path"}
+		return Decision{Action: Gate, Reason: "edit without a path"}
 	}
 	if under(p, c.WriteRoots) {
-		return Decision{Allow, "inside the task workspace"}
+		return Decision{Action: Allow, Reason: "inside the task workspace"}
 	}
 	if c.Role == Reviewer {
-		return Decision{Deny, "The reviewer does not change the work. Write notes in your scratch dir and report findings with the verdict tool."}
+		return Decision{Action: Deny, Reason: "The reviewer does not change the work. Write notes in your scratch dir and report findings with the verdict tool."}
 	}
 	if strings.Contains(p, "/.claude/projects/") && strings.Contains(p, "/memory/") && c.Role == Worker {
-		return Decision{Deny, "Workers do not write memory. Put what you learned in the `learnings` field of the finish tool; the Captain decides what to keep."}
+		return Decision{Action: Deny, Reason: "Workers do not write memory. Put what you learned in the `learnings` field of the finish tool; the Captain decides what to keep."}
 	}
-	return Decision{Gate, "edit outside the task workspace: " + p}
+	// "Always allow" for edits is stored per directory and covers everything below it.
+	dir := filepath.Dir(filepath.Clean(p))
+	if c.Allowed != nil {
+		for d := dir; d != "/" && d != "."; d = filepath.Dir(d) {
+			if c.Allowed("edit-outside", d) {
+				return Decision{Allow, "always allowed by you: edits in " + d, "edit-outside", d}
+			}
+		}
+	}
+	return Decision{Gate, "edit outside the task workspace: " + p, "edit-outside", dir}
 }
 
 func under(p string, roots []string) bool {
@@ -143,31 +166,36 @@ type rule struct {
 	re     *regexp.Regexp
 	action Action
 	reason string
+	kind   string
 }
 
 func r(expr string, a Action, reason string) rule {
-	return rule{regexp.MustCompile(expr), a, reason}
+	return rule{re: regexp.MustCompile(expr), action: a, reason: reason, kind: "deny"}
+}
+
+func g(kind, expr, reason string) rule {
+	return rule{re: regexp.MustCompile(expr), action: Gate, reason: reason, kind: kind}
 }
 
 // hardRules apply to every role. First match wins, so order matters: deny before gate.
 var hardRules = []rule{
 	r(`\bgit\s+push\b`, Deny, "Workers never push. Oscar pushes the branch itself when it opens the draft PR (oscar open_draft_pr)."),
 	r(`(?i)slack-send|chat\.postMessage|hooks\.slack\.com|chat\.update`, Deny, "Do not post to Slack yourself. Put the message in the outbox with the oscar outbox tool; the user approves it and Oscar posts it."),
-	r(`\bgh\s+(pr|issue|release|repo)\s+(create|merge|close|edit|comment|review|delete|ready)\b`, Gate, "changes something on GitHub"),
-	r(`\bgh\s+api\b.*(-X|--method)\s*(POST|PUT|PATCH|DELETE)`, Gate, "writes through the GitHub API"),
-	r(`(?i)\b(kubectl|oc)\s+(apply|create|delete|edit|patch|replace|scale|rollout|exec|cp|drain|cordon|uncordon|set|label|annotate|taint)\b`, Gate, "changes a Kubernetes cluster"),
-	r(`\bhelm\s+(install|upgrade|uninstall|rollback|delete)\b|\bterraform\s+(apply|destroy|import)\b`, Gate, "changes infrastructure"),
-	r(`\bdocker\s+push\b|\bnpm\s+publish\b`, Gate, "publishes an artifact"),
-	r(`\b(ssh|tsh\s+ssh|scp|sftp)\s`, Gate, "runs on a remote machine"),
-	r(`\brsync\b[^|;&]*\S+:`, Gate, "copies to or from a remote machine"),
-	r(`(?i)\b(deploy|rollback)\b`, Gate, "looks like a deploy or rollback"),
-	r(`(?i)\b(jenkins)\b[^|;&]*(build|buildWithParameters|stop|doDelete)`, Gate, "starts or stops a CI job"),
-	r(`(?i)\baws\s+\S+\s+(?:\S+\s+)*?(put|delete|create|update|modify|terminate|stop|start|reboot|run|invoke|send|publish|rm|cp|mv|sync|restore|attach|detach|associate|authorize|revoke|tag|untag)[a-z-]*\b`, Gate, "changes something in AWS"),
-	r(`(?i)\b(redis-cli|valkey-cli)\b[^|;&]*\b(del|unlink|set|setex|mset|hset|hdel|lpush|rpush|lpop|rpop|sadd|srem|zadd|zrem|expire|persist|rename|flushdb|flushall|config\s+set|eval)\b`, Gate, "writes to Redis/Valkey"),
-	r(`(?i)\b(psql|mysql|mariadb|sqlite3|mongosh|mongo|clickhouse-client)\b[^|]*\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|vacuum|reindex|cluster|copy\s+\S+\s+from)\b`, Gate, "writes to a database"),
-	r(`(?i)\b(curl|wget|http|httpie|xh)\b[^|;&]*(\s-X\s*(POST|PUT|PATCH|DELETE)|\s--request\s+(POST|PUT|PATCH|DELETE)|\s(-d|--data|--data-raw|--data-binary|--data-urlencode|-F|--form|-T|--upload-file|--json)\b|\s(POST|PUT|PATCH|DELETE)\s)`, Gate, "sends data to a server"),
-	r(`/\.claude/secrets/|\bsecurity\s+find-(generic|internet)-password\b|(^|\s)(cat|less|more|head|tail|grep)\s+[^|;&]*\.env(\.\w+)?(\s|$)`, Gate, "reads a secret"),
 	r(`\brm\s+(-\w*[rf]\w*\s+)+\s*(/|~|\$HOME)(\s|$)`, Deny, "Refusing to delete a whole home or root directory."),
+	g("github-write", `\bgh\s+(pr|issue|release|repo)\s+(create|merge|close|edit|comment|review|delete|ready)\b`, "changes something on GitHub"),
+	g("github-write", `\bgh\s+api\b.*(-X|--method)\s*(POST|PUT|PATCH|DELETE)`, "writes through the GitHub API"),
+	g("k8s-write", `(?i)\b(kubectl|oc)\s+(apply|create|delete|edit|patch|replace|scale|rollout|exec|cp|drain|cordon|uncordon|set|label|annotate|taint)\b`, "changes a Kubernetes cluster"),
+	g("infra-write", `\bhelm\s+(install|upgrade|uninstall|rollback|delete)\b|\bterraform\s+(apply|destroy|import)\b`, "changes infrastructure"),
+	g("publish", `\bdocker\s+push\b|\bnpm\s+publish\b`, "publishes an artifact"),
+	g("remote-shell", `\b(ssh|tsh\s+ssh|scp|sftp)\s`, "runs on a remote machine"),
+	g("remote-copy", `\brsync\b[^|;&]*\S+:`, "copies to or from a remote machine"),
+	g("deploy", `(?i)\b(deploy|rollback)\b`, "looks like a deploy or rollback"),
+	g("ci", `(?i)\b(jenkins)\b[^|;&]*(build|buildWithParameters|stop|doDelete)`, "starts or stops a CI job"),
+	g("aws-write", `(?i)\baws\s+\S+\s+(?:\S+\s+)*?(put|delete|create|update|modify|terminate|stop|start|reboot|run|invoke|send|publish|rm|cp|mv|sync|restore|attach|detach|associate|authorize|revoke|tag|untag)[a-z-]*\b`, "changes something in AWS"),
+	g("redis-write", `(?i)\b(redis-cli|valkey-cli)\b[^|;&]*\b(del|unlink|set|setex|mset|hset|hdel|lpush|rpush|lpop|rpop|sadd|srem|zadd|zrem|expire|persist|rename|flushdb|flushall|config\s+set|eval)\b`, "writes to Redis/Valkey"),
+	g("db-write", `(?i)\b(psql|mysql|mariadb|sqlite3|mongosh|mongo|clickhouse-client)\b[^|]*\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|vacuum|reindex|cluster|copy\s+\S+\s+from)\b`, "writes to a database"),
+	g("http-write", `(?i)\b(curl|wget|http|httpie|xh)\b[^|;&]*(\s-X\s*(POST|PUT|PATCH|DELETE)|\s--request\s+(POST|PUT|PATCH|DELETE)|\s(-d|--data|--data-raw|--data-binary|--data-urlencode|-F|--form|-T|--upload-file|--json)\b|\s(POST|PUT|PATCH|DELETE)\s)`, "sends data to a server"),
+	g("secret-read", `/\.claude/secrets/|\bsecurity\s+find-(generic|internet)-password\b|(^|\s)(cat|less|more|head|tail|grep)\s+[^|;&]*\.env(\.\w+)?(\s|$)`, "reads a secret"),
 }
 
 var reviewerRules = []rule{
@@ -190,19 +218,27 @@ var splitter = regexp.MustCompile(`\s*(\|\||&&|;|\||\n)\s*`)
 func CheckCommand(c Context, cmd string) Decision {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
-		return Decision{Pass, ""}
+		return Decision{Action: Pass, Reason: ""}
 	}
 	if c.Role == Reviewer {
 		for _, rl := range reviewerRules {
 			if rl.re.MatchString(cmd) {
-				return Decision{rl.action, rl.reason}
+				return Decision{Action: rl.action, Reason: rl.reason}
 			}
 		}
 	}
 	for _, rl := range hardRules {
-		if rl.re.MatchString(cmd) {
-			return Decision{rl.action, rl.reason}
+		if !rl.re.MatchString(cmd) {
+			continue
 		}
+		if rl.action == Deny {
+			return Decision{Action: Deny, Reason: rl.reason}
+		}
+		subject := subjectOf(rl.kind, cmd)
+		if rl.kind == "http-write" && subject == "" {
+			continue // every URL in the command is on this machine
+		}
+		return gate(c, rl.kind, subject, rl.reason)
 	}
 	if d, ok := checkMainCheckout(c, cmd); ok {
 		return d
@@ -217,10 +253,10 @@ func CheckCommand(c Context, cmd string) Decision {
 			part = strings.TrimSpace(strings.SplitN(part, " ", 2)[1])
 		}
 		if !safePrefix.MatchString(part) {
-			return Decision{Pass, ""}
+			return Decision{Action: Pass, Reason: ""}
 		}
 	}
-	return Decision{Allow, "safe command"}
+	return Decision{Action: Allow, Reason: "safe command"}
 }
 
 var mutatingGit = regexp.MustCompile(`\bgit\s+(-C\s+(\S+)\s+)?(commit|checkout|switch|reset|merge|rebase|stash|clean|branch\s+-[dDmM]|worktree\s+remove|pull|cherry-pick|revert|am|apply|restore)\b`)
@@ -236,11 +272,81 @@ func checkMainCheckout(c Context, cmd string) (Decision, bool) {
 	}
 	for _, root := range c.RepoRoots {
 		if m[2] != "" && filepath.Clean(m[2]) == filepath.Clean(root) {
-			return Decision{Gate, "changes the main checkout " + root + " instead of the task worktree"}, true
+			return Decision{Gate, "changes the main checkout " + root + " instead of the task worktree", "main-checkout", root}, true
 		}
 		if strings.Contains(cmd, "cd "+root+" ") || strings.Contains(cmd, "cd "+root+"&") || strings.HasSuffix(cmd, "cd "+root) {
-			return Decision{Gate, "changes the main checkout " + root + " instead of the task worktree"}, true
+			return Decision{Gate, "changes the main checkout " + root + " instead of the task worktree", "main-checkout", root}, true
 		}
 	}
 	return Decision{}, false
+}
+
+// ---------- subjects for "Always allow" ----------
+
+var (
+	reSchemeHost = regexp.MustCompile(`(?i)\bhttps?://(\[[^\]]+\]|[^/:\s'"]+)`)
+	reBareHost   = regexp.MustCompile(`(?i)^(\[::1\]|[a-z0-9-]+(?:\.[a-z0-9-]+)*)(:\d+)?(/\S*)?$`)
+	reUserHost   = regexp.MustCompile(`\b[\w.-]+@([A-Za-z0-9.-]+)`)
+	reDashH      = regexp.MustCompile(`\s-h\s*([^\s'"]+)`)
+	reDSNHost    = regexp.MustCompile(`(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|rediss?)://(?:[^@/\s]*@)?(\[[^\]]+\]|[^:/\s'"?]+)`)
+	reAwsService = regexp.MustCompile(`(?i)\baws\s+([a-z0-9-]+)`)
+)
+
+func isLocalHost(h string) bool {
+	h = strings.Trim(strings.ToLower(h), "[]")
+	return h == "localhost" || h == "127.0.0.1" || h == "0.0.0.0" || h == "::1" || strings.HasSuffix(h, ".localhost")
+}
+
+// subjectOf returns what a gate is about (a host, a service), used to remember "Always allow".
+// For http-write it returns "" when every URL is on this machine.
+func subjectOf(kind, cmd string) string {
+	switch kind {
+	case "http-write":
+		var hosts []string
+		for _, m := range reSchemeHost.FindAllStringSubmatch(cmd, -1) {
+			hosts = append(hosts, m[1])
+		}
+		for _, tok := range strings.Fields(cmd) {
+			tok = strings.Trim(tok, `'"`)
+			if strings.HasPrefix(tok, "-") || strings.Contains(tok, "://") || strings.Contains(tok, "=") {
+				continue
+			}
+			if m := reBareHost.FindStringSubmatch(tok); m != nil && (strings.Contains(m[1], ".") || isLocalHost(m[1])) && (m[2] != "" || m[3] != "" || isLocalHost(m[1])) {
+				hosts = append(hosts, m[1])
+			}
+		}
+		for _, h := range hosts {
+			if !isLocalHost(h) {
+				return strings.ToLower(h)
+			}
+		}
+		if len(hosts) == 0 {
+			return "unknown"
+		}
+		return ""
+	case "remote-shell", "remote-copy":
+		if m := reUserHost.FindStringSubmatch(cmd); m != nil {
+			return m[1]
+		}
+		f := strings.Fields(cmd)
+		for i := 1; i < len(f); i++ {
+			if strings.HasPrefix(f[i], "-") || f[i] == "ssh" {
+				continue
+			}
+			return f[i]
+		}
+	case "db-write", "redis-write":
+		if m := reDSNHost.FindStringSubmatch(cmd); m != nil {
+			return strings.Trim(m[1], "[]")
+		}
+		if m := reDashH.FindStringSubmatch(cmd); m != nil {
+			return m[1]
+		}
+		return "localhost"
+	case "aws-write":
+		if m := reAwsService.FindStringSubmatch(cmd); m != nil {
+			return m[1]
+		}
+	}
+	return ""
 }

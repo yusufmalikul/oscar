@@ -47,6 +47,7 @@ type sessionSpec struct {
 
 func (e *Engine) startSession(sp sessionSpec) (*claude.Session, error) {
 	sp.pctx.ServerName = serverName
+	sp.pctx.Allowed = e.allowed
 	opts := claude.Options{
 		Bin:                e.cfg.ClaudeBin,
 		Cwd:                e.cfg.ClaudeCwd,
@@ -108,8 +109,10 @@ func (e *Engine) approveTool(ctx context.Context, sp sessionSpec, req claude.Per
 	if reason == "" {
 		reason = "needs approval"
 	}
+	pd := policy.Check(sp.pctx, req.ToolName, req.Input)
 	p := store.Pending{ID: newID("tool"), Kind: store.PendingTool, Tool: req.ToolName, Input: req.Input,
-		Question: fmt.Sprintf("Allow %s? (%s)", req.ToolName, strings.TrimPrefix(reason, "Oscar gate: ")), Detail: redact.String(detail)}
+		Question: fmt.Sprintf("Allow %s? (%s)", req.ToolName, strings.TrimPrefix(reason, "Oscar gate: ")), Detail: redact.String(detail),
+		RuleKind: pd.Kind, RuleSubject: pd.Subject}
 	ch := make(chan decision, 1)
 	e.waiters[p.ID] = ch
 	if sp.taskID == "" {

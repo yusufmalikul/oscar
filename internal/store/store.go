@@ -52,7 +52,10 @@ type Pending struct {
 	Tool     string          `json:"tool,omitempty"`
 	Input    json.RawMessage `json:"input,omitempty"`
 	OutboxID string          `json:"outbox_id,omitempty"`
-	Created  time.Time       `json:"created"`
+	// RuleKind and RuleSubject let the user "Always allow" a gated tool call.
+	RuleKind    string    `json:"rule_kind,omitempty"`
+	RuleSubject string    `json:"rule_subject,omitempty"`
+	Created     time.Time `json:"created"`
 }
 
 type OutboxItem struct {

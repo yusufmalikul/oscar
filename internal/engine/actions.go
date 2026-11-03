@@ -16,6 +16,7 @@ type Decision struct {
 	Allow  bool   `json:"allow"`
 	Text   string `json:"text"`   // free answer, note, or edited message
 	Option string `json:"option"` // chosen option of a question
+	Always bool   `json:"always"` // tool calls: also remember "always allow" for this kind and subject
 }
 
 // Decide resolves a pending item of a task. taskID "" means a Captain item.
@@ -47,6 +48,11 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		e.mu.Unlock()
 		if ch == nil {
 			return errors.New("that tool call is no longer waiting")
+		}
+		if d.Allow && d.Always {
+			if err := e.AddAllowRule(p.RuleKind, p.RuleSubject, p.Detail); err != nil {
+				return err
+			}
 		}
 		ch <- decision{allow: d.Allow, note: d.Text}
 		e.logLine(taskID, "you", "info", fmt.Sprintf("%s: %s", map[bool]string{true: "allowed", false: "denied"}[d.Allow], p.Detail))
@@ -207,6 +213,11 @@ func (e *Engine) decideCaptain(pendingID string, d Decision) error {
 		e.mu.Unlock()
 		if ch == nil {
 			return errors.New("that tool call is no longer waiting")
+		}
+		if d.Allow && d.Always {
+			if err := e.AddAllowRule(p.RuleKind, p.RuleSubject, p.Detail); err != nil {
+				return err
+			}
 		}
 		ch <- decision{allow: d.Allow, note: d.Text}
 		return nil

@@ -94,6 +94,7 @@ type Engine struct {
 	repoNames []string
 	updating  string // current self-update step, "" when idle
 	stopping  bool   // Shutdown started: sessions that end now are not escalated
+	allow     []AllowRule
 	version   string
 
 	// Restart is set by the server: it shuts down and exits with ExitRestart.
@@ -111,6 +112,7 @@ func New(ctx context.Context, cfg config.Config) (*Engine, error) {
 		waiting: map[string]bool{}, waiters: map[string]chan decision{}, planCmds: map[string][]string{},
 		finished: map[string]bool{}, lastText: map[string]string{}, subs: map[chan Event]struct{}{},
 	}
+	_ = st.Value(allowFile, &e.allow)
 	if err := e.loadTypes(); err != nil {
 		return nil, err
 	}
@@ -292,7 +294,7 @@ func (e *Engine) Snapshot() State {
 		Health: map[string]any{
 			"workers": len(e.workers), "reviewers": len(e.reviewers), "max_workers": e.cfg.MaxWorkers,
 			"captain": e.captain != nil, "captain_busy": e.capBusy,
-			"self_repo": e.cfg.Self.Repo, "updating": e.updating, "version": e.version,
+			"allow_rules": len(e.allow), "self_repo": e.cfg.Self.Repo, "updating": e.updating, "version": e.version,
 		}}
 }
 
