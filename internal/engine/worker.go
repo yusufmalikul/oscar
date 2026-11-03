@@ -353,6 +353,29 @@ func (e *Engine) workerTools(taskID string) []claude.Tool {
 			Handler: func(ctx context.Context, raw json.RawMessage) (string, error) {
 				return e.renameBranch(ctx, taskID, raw)
 			}},
+		{Name: "update_pr", Description: "Propose a new description (and optionally title) for a PR this task opened. The user sees it in the outbox, can edit it, and Oscar updates the PR when they press Post.",
+			Schema: obj(map[string]any{"repo": str, "description": str, "title": str}, "repo", "description"),
+			Handler: h(func(t *store.Task, ty *TaskType, raw json.RawMessage) (string, error) {
+				var a struct{ Repo, Description, Title string }
+				_ = json.Unmarshal(raw, &a)
+				var pr *store.PR
+				for i := range t.PRs {
+					if t.PRs[i].Repo == a.Repo {
+						pr = &t.PRs[i]
+					}
+				}
+				if pr == nil {
+					return "", fmt.Errorf("this task has no PR on %s", a.Repo)
+				}
+				if w := forbiddenWord(e.cfg.Rules(), a.Title+"\n"+a.Description); w != "" {
+					return "", fmt.Errorf("the text mentions %q, which the local rules forbid in PR text", w)
+				}
+				o := store.OutboxItem{ID: newID("o"), Kind: "pr_update", Repo: a.Repo, URL: pr.URL, Title: redact.String(a.Title),
+					Text: redact.String(a.Description), Target: "description of " + pr.URL, Status: "draft", Updated: time.Now()}
+				t.Outbox = append(t.Outbox, o)
+				e.save(t)
+				return "Draft saved; the user approves it after you finish. Call finish now.", nil
+			})},
 		{Name: "finish", Description: "Finish the task with a short summary for the user and any lessons worth remembering.",
 			Schema: obj(map[string]any{"summary": str, "learnings": str}, "summary"),
 			Handler: h(func(t *store.Task, ty *TaskType, raw json.RawMessage) (string, error) {

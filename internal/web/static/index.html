@@ -350,6 +350,7 @@ function outboxCard(t,o,withActions,pendingId){
   const ed=editing===o.id;
   const head=o.kind==="slack"
     ?`<div class="slk-to">To <b>${esc(o.target)}</b>${o.thread?" · in thread":""} · posts as you</div>`
+    :o.kind==="pr_update"?`<div class="slk-to"><span class="badge b-run">PR description</span> <a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.url)}</a>${o.title?` · title: <b>${esc(o.title)}</b>`:""}</div>`
     :`<div class="slk-to"><span class="badge ${o.path?"b-run":"b-review"}">${o.path?"inline":"general"}</span> <span class="mono">${esc(o.path?o.path+":"+o.line:"on the PR")}</span> · ${esc(o.target)}</div>`;
   const body=ed?`<textarea class="edit" id="ed-${o.id}">${esc(o.text)}</textarea>
       <div class="actions"><button class="btn pri sm" data-save="${o.id}">Save</button><button class="btn sm" data-cancel-edit>Cancel</button></div>`

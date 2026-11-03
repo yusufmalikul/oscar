@@ -61,7 +61,9 @@ type Pending struct {
 
 type OutboxItem struct {
 	ID      string    `json:"id"`
-	Kind    string    `json:"kind"` // slack | pr_comment
+	Kind    string    `json:"kind"`            // slack | pr_comment | pr_update
+	Title   string    `json:"title,omitempty"` // pr_update: new title (optional)
+	URL     string    `json:"url,omitempty"`   // pr_update: the PR
 	Target  string    `json:"target"`
 	Channel string    `json:"channel,omitempty"`
 	Thread  string    `json:"thread,omitempty"`

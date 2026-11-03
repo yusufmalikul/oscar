@@ -51,8 +51,9 @@ type Config struct {
 		PRComment []string `yaml:"pr_comment"`
 		SlackPost []string `yaml:"slack_post"`
 		Notify    []string `yaml:"notify"`
-		MergePR   []string `yaml:"merge_pr"` // only used for Oscar's own repo, on the user's click
-		ClosePR   []string `yaml:"close_pr"` // decline/close a PR (after a branch rename), on the user's click
+		MergePR   []string `yaml:"merge_pr"`  // only used for Oscar's own repo, on the user's click
+		ClosePR   []string `yaml:"close_pr"`  // decline/close a PR (after a branch rename), on the user's click
+		UpdatePR  []string `yaml:"update_pr"` // change a PR title/description, on the user's click
 	} `yaml:"integrations"`
 
 	// Repos outside repos_dir, by name (for example Oscar's own source).
@@ -78,6 +79,7 @@ type RepoIntegrations struct {
 	PRComment []string `yaml:"pr_comment"`
 	MergePR   []string `yaml:"merge_pr"`
 	ClosePR   []string `yaml:"close_pr"`
+	UpdatePR  []string `yaml:"update_pr"`
 }
 
 // Default returns the defaults used when the file does not set a field.
@@ -127,7 +129,7 @@ func Load(path string) (Config, error) {
 			l[i] = Expand(l[i])
 		}
 	}
-	for _, l := range [][]string{c.Integrations.DraftPR, c.Integrations.PRComment, c.Integrations.SlackPost, c.Integrations.Notify, c.Integrations.MergePR, c.Integrations.ClosePR} {
+	for _, l := range [][]string{c.Integrations.DraftPR, c.Integrations.PRComment, c.Integrations.SlackPost, c.Integrations.Notify, c.Integrations.MergePR, c.Integrations.ClosePR, c.Integrations.UpdatePR} {
 		expandAll(l)
 	}
 	for _, ri := range c.RepoIntegrations {
@@ -135,6 +137,7 @@ func Load(path string) (Config, error) {
 		expandAll(ri.PRComment)
 		expandAll(ri.MergePR)
 		expandAll(ri.ClosePR)
+		expandAll(ri.UpdatePR)
 	}
 	for k, v := range c.ExtraRepos {
 		c.ExtraRepos[k] = Expand(v)
@@ -194,6 +197,10 @@ func (c Config) Integration(repo, kind string) []string {
 			if len(ri.ClosePR) > 0 {
 				return ri.ClosePR
 			}
+		case "update_pr":
+			if len(ri.UpdatePR) > 0 {
+				return ri.UpdatePR
+			}
 		}
 	}
 	switch kind {
@@ -205,6 +212,8 @@ func (c Config) Integration(repo, kind string) []string {
 		return c.Integrations.MergePR
 	case "close_pr":
 		return c.Integrations.ClosePR
+	case "update_pr":
+		return c.Integrations.UpdatePR
 	}
 	return nil
 }

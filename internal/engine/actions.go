@@ -208,6 +208,12 @@ func (e *Engine) post(o store.OutboxItem) (string, error) {
 	case "pr_comment":
 		res, err = runIntegration(e.ctx, e.cfg.Integration(o.Repo, "pr_comment"), map[string]any{
 			"repo": o.Repo, "repo_path": e.cfg.RepoPath(o.Repo), "pr": o.PR, "path": o.Path, "line": o.Line, "text": o.Text})
+	case "pr_update":
+		payload := map[string]any{"repo": o.Repo, "repo_path": e.cfg.RepoPath(o.Repo), "url": o.URL, "description": o.Text}
+		if o.Title != "" {
+			payload["title"] = o.Title
+		}
+		res, err = runIntegration(e.ctx, e.cfg.Integration(o.Repo, "update_pr"), payload)
 	default:
 		return "", fmt.Errorf("unknown outbox kind %s", o.Kind)
 	}
