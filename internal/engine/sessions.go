@@ -257,6 +257,12 @@ func (e *Engine) rememberSession(sp sessionSpec, id string) {
 }
 
 func (e *Engine) turnEnded(sp sessionSpec, isError bool, result string) {
+	e.mu.Lock()
+	stopping := e.stopping
+	e.mu.Unlock()
+	if stopping {
+		return // the task stays running/review on disk and is resumed after the restart
+	}
 	switch sp.role {
 	case policy.Captain:
 		e.mu.Lock()

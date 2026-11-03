@@ -93,6 +93,7 @@ type Engine struct {
 	subs      map[chan Event]struct{}
 	repoNames []string
 	updating  string // current self-update step, "" when idle
+	stopping  bool   // Shutdown started: sessions that end now are not escalated
 	version   string
 
 	// Restart is set by the server: it shuts down and exits with ExitRestart.
@@ -406,6 +407,7 @@ func mustJSON(v any) string {
 // Shutdown closes every Claude process. State is on disk; the next Start resumes.
 func (e *Engine) Shutdown() {
 	e.mu.Lock()
+	e.stopping = true
 	var all []*claude.Session
 	for _, s := range e.workers {
 		all = append(all, s)
