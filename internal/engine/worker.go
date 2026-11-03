@@ -638,7 +638,7 @@ func (e *Engine) renameBranch(ctx context.Context, taskID string, raw json.RawMe
 		Question: "Decline the old PR " + oldPR.URL + " and delete branch " + oldBranch + "?",
 		Detail:   "The work moved to branch " + a.NewName + ". " + res})
 	e.mu.Unlock()
-	return res + " The user is asked to decline the old PR " + oldPR.URL + " and delete the old branch.", nil
+	return res + " The user is asked to decline the old PR " + oldPR.URL + " and delete the old branch; Oscar does that on their click. Call finish now unless other work is left.", nil
 }
 
 func removePR(prs []store.PR, repo string) []store.PR {
