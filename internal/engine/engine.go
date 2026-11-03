@@ -320,7 +320,37 @@ func (e *Engine) stepIndex(t *store.Task, name string) int {
 			return i
 		}
 	}
-	return t.Step
+	// Workers often report a step in their own words ("Build a local rig" for "Build rig").
+	// Pick the step that shares the most words; keep the current step when nothing matches.
+	best, bestScore := t.Step, 0
+	want := stepWords(name)
+	for i, s := range ty.Steps {
+		score := 0
+		for _, a := range stepWords(s) {
+			for _, b := range want {
+				if strings.HasPrefix(a, b) || strings.HasPrefix(b, a) {
+					score++
+					break
+				}
+			}
+		}
+		if score > bestScore {
+			best, bestScore = i, score
+		}
+	}
+	return best
+}
+
+var stopWords = map[string]bool{"the": true, "and": true, "each": true, "with": true, "from": true, "for": true, "real": true, "one": true, "per": true}
+
+func stepWords(s string) []string {
+	var out []string
+	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return r < 'a' || r > 'z' }) {
+		if len(w) >= 3 && !stopWords[w] {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 func (e *Engine) setStep(t *store.Task, name string) {
