@@ -429,10 +429,19 @@ func (e *Engine) openDraftPR(ctx context.Context, taskID string, raw json.RawMes
 		}
 	}
 	existing := ""
+	var superseded *store.PR
 	for _, p := range t.PRs {
-		if p.Repo == a.Repo {
-			existing = p.URL
+		if p.Repo != a.Repo {
+			continue
 		}
+		if wt := worktreeOf(t, a.Repo); wt != nil && p.Branch != "" && p.Branch != wt.Branch {
+			// The branch was renamed after this PR was opened: the PR still points at the old
+			// branch, so a new PR is needed and the old one should be closed.
+			pp := p
+			superseded = &pp
+			continue
+		}
+		existing = p.URL
 	}
 	e.mu.Unlock()
 	if wt == nil {
@@ -476,8 +485,18 @@ func (e *Engine) openDraftPR(ctx context.Context, taskID string, raw json.RawMes
 	}
 	url, _ := res["url"].(string)
 	e.mu.Lock()
+	if superseded != nil {
+		t.PRs = removePR(t.PRs, a.Repo)
+	}
 	t.PRs = append(t.PRs, store.PR{Repo: a.Repo, Branch: wt.Branch, URL: url, Title: a.Title})
 	e.setStep(t, "Draft PR")
+	if superseded != nil {
+		in, _ := json.Marshal(map[string]string{"repo": a.Repo, "url": superseded.URL, "branch": superseded.Branch, "new": wt.Branch})
+		t.Progress = append(t.Progress, "Moved PR "+superseded.URL+" to "+url)
+		e.needsYou(t, store.Pending{Kind: store.PendingClosePR, Input: in,
+			Question: "Decline the old PR " + superseded.URL + " and delete branch " + superseded.Branch + "?",
+			Detail:   "The work moved to branch " + wt.Branch + ", new PR: " + url})
+	}
 	e.save(t)
 	e.mu.Unlock()
 	e.logLine(taskID, "oscar", "info", "draft PR opened: "+url)
@@ -612,4 +631,13 @@ func removePR(prs []store.PR, repo string) []store.PR {
 func mustRaw(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b
+}
+
+func worktreeOf(t *store.Task, repo string) *store.Worktree {
+	for i := range t.Worktrees {
+		if t.Worktrees[i].Repo == repo {
+			return &t.Worktrees[i]
+		}
+	}
+	return nil
 }
