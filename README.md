@@ -21,8 +21,8 @@ You ── chat ──► Captain ──► Worker (Item-1, own worktree) ──
 
 ## Status
 
-Early. It works end to end on one machine. Not done yet: scheduled and long-running
-monitor tasks, approval chains, a remote-access setup guide, and web push.
+Early. It works end to end on one machine and can update itself. Not done yet: scheduled and
+long-running monitor tasks, approval chains, a remote-access setup guide, and web push.
 
 ## How it works
 
@@ -68,6 +68,14 @@ Settings that matter:
 - `rules_file`: team rules added to every prompt, such as the reply language and conventions.
 - `integrations`: small scripts for draft PRs, PR comments, Slack posts and notifications.
   Examples for GitHub and Slack are in `examples/integrations`.
+
+`./oscar` runs a small supervisor in front of the server. The supervisor restarts the server
+after a self-update, and if the new version does not start, it rolls back to the previous one.
+To start Oscar at login on macOS and keep it running, install the LaunchAgent:
+
+```sh
+examples/launchd/install.sh            # uses ./oscar; logs to ~/.oscar/server.log
+```
 
 Oscar listens on localhost only. To use it from your phone, put it behind a private network
 such as Tailscale. Do not expose it to the internet.
