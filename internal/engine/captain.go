@@ -99,7 +99,10 @@ func (e *Engine) tellCaptainDone(taskID string) {
 	note := fmt.Sprintf("[Oscar event, not from the user] %s (%s) is done: %s", t.ID, t.Title, truncate(t.Summary, 800))
 	e.capBusy = true
 	e.mu.Unlock()
-	_ = s.Send(note + "\n\nIf this needs a follow-up task (for example a Slack reply with the result), say so in one line and create it only if the original request asked for it. Otherwise reply with exactly: NOOP")
+	_ = s.Send(note + "\n\nCheck the user's goal behind this task (what they asked for in this chat). If the goal is not reached yet, " +
+		"take the next step now: reopen_task when the fix belongs to a task that already exists (for example re-run a verify task after its " +
+		"bugs were fixed), or create_task for new work. Tell the user in one or two lines what you started. Do not start work the user did not ask for. " +
+		"If nothing is needed, reply with exactly: NOOP")
 }
 
 func (e *Engine) captainTools() []claude.Tool {
