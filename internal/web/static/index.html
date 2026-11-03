@@ -256,7 +256,7 @@ function connect(){
   const es=new EventSource("/api/events");
   es.onmessage=ev=>{
     const m=JSON.parse(ev.data);
-    if(m.kind==="log"){ (logs[m.task_id]=logs[m.task_id]||[]).push(m.data); if(selected===m.task_id&&tab==="log") renderLog(); }
+    if(m.kind==="log"){ (logs[m.task_id]=logs[m.task_id]||[]).push(m.data); const t=task(m.task_id); if(t) t.last_activity=m.data.at; if(selected===m.task_id&&tab==="log") renderLog(); }
     else if(m.kind==="chat"){ S.chat.push(m.data); renderChat(true); }
     else refreshSoon();
   };
@@ -406,6 +406,10 @@ function paneHtml(t){
   return "";
 }
 function colorDiff(d){ return esc(d).split("\n").map(l=>l.startsWith("+")&&!l.startsWith("+++")?`<span class="a">${l}</span>`:l.startsWith("-")&&!l.startsWith("---")?`<span class="d">${l}</span>`:l.startsWith("@@")||l.startsWith("###")?`<span class="h">${l}</span>`:l).join("\n"); }
+function lastAt(t){ const L=logs[t.id]; const l=L&&L.length?L[L.length-1].at:null; return l||t.last_activity||t.updated||""; }
+function ago(iso){ if(!iso) return ""; const s=Math.max(0,Math.round((Date.now()-new Date(iso))/1000)); return s<60?s+"s":s<3600?Math.round(s/60)+"m":Math.round(s/3600)+"h"; }
+setInterval(()=>{ const el=$("#lastAct"); if(!el) return; const t=task(selected); const at=t?lastAt(t):el.dataset.at; const s=(Date.now()-new Date(at))/1000;
+  el.innerHTML=`last activity <b style="color:${s>600?"var(--need)":"inherit"}">${ago(at)} ago</b>`; },1000);
 function renderLog(){
   const box=$("#logbox"); if(!box) return;
   const L=logs[selected]||[];
@@ -430,7 +434,7 @@ function renderDetail(){
   $("#detail").innerHTML=`<div class="dhead"><button class="back" onclick="showCol('colBoard')">← Board</button>
     <div class="row1"><span class="tid">${t.id}</span><span class="type">${esc(t.type)}</span><span class="badge b-${g.cls}">${g.label}</span>${t.round?`<span class="badge b-review">round ${t.round}</span>`:""}</div>
     <h3>${esc(t.title)}</h3>
-    <div class="meta">${(t.repos||[]).map(r=>`<span class="repo">${esc(r)}</span>`).join("")}${(t.worktrees||[]).map(w=>`<span class="mono">${esc(w.branch)}</span>`).join("")}${t.source?`<span>from ${esc(t.source)}</span>`:""}<span>${new Date(t.created).toLocaleString()}</span></div></div>
+    <div class="meta">${(t.repos||[]).map(r=>`<span class="repo">${esc(r)}</span>`).join("")}${(t.worktrees||[]).map(w=>`<span class="mono">${esc(w.branch)}</span>`).join("")}${t.source?`<span>from ${esc(t.source)}</span>`:""}<span>${new Date(t.created).toLocaleString()}</span>${["running","review"].includes(t.status)?`<span id="lastAct" data-at="${esc(lastAt(t))}"></span>`:""}</div></div>
     ${stepsHtml(t)}
     <div class="tabs">${tabs.map(k=>`<button class="tab ${tab===k?"on":""}" data-tab="${k}">${k[0].toUpperCase()+k.slice(1)}${k==="outbox"?` (${t.outbox.length})`:""}</button>`).join("")}</div>
     <div class="pane">${paneHtml(t)}</div>`;

@@ -350,7 +350,7 @@ func (e *Engine) Reopen(taskID, instruction string) error {
 	e.mu.Unlock()
 	e.logLine(taskID, "you", "text", "Reopened: "+instruction)
 	msg := "The user reopened this task. New instruction:\n" + instruction +
-		"\n\nWork in the same worktree(s) and branch. Prove the change (test or screenshot), commit, then submit_for_review."
+		"\n\nWork in the same worktree(s) and branch. Call report at the start of each step so the user sees where you are. Prove the change (test or screenshot), commit, then submit_for_review."
 	if hasPR {
 		msg += " After the review passes, call open_draft_pr again: Oscar pushes the branch and the open PR updates. Then finish."
 	}

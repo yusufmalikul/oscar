@@ -255,6 +255,9 @@ func (e *Engine) logLine(taskID, who, kind, text string) {
 	l := store.LogLine{At: time.Now(), Who: who, Kind: kind, Text: redact.String(text)}
 	_ = e.st.AppendLog(taskID, l)
 	e.mu.Lock()
+	if t, ok := e.tasks[taskID]; ok && who != "you" {
+		t.LastActivity = l.At // kept in memory; saved with the next task change
+	}
 	e.publish(Event{Kind: "log", TaskID: taskID, Data: l})
 	e.mu.Unlock()
 }

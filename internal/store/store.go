@@ -132,6 +132,7 @@ type Task struct {
 	Report   string       `json:"report,omitempty"` // final report (debug / ops / review)
 
 	ReviewPassed bool      `json:"review_passed"`
+	LastActivity time.Time `json:"last_activity,omitempty"` // last log line from a worker or reviewer
 	Created      time.Time `json:"created"`
 	Updated      time.Time `json:"updated"`
 }
