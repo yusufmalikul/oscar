@@ -388,7 +388,7 @@ function pendingHtml(t,p){
   if(p.kind==="plan"){ const cmds=Array.isArray(p.input)?p.input:[];
     return `<div class="box need"><h4>❓ ${esc(p.question)}</h4><pre>${esc(p.detail)}</pre>
     <div class="small" style="margin:8px 0 4px">Commands that will run without asking again:</div><pre>${esc((Array.isArray(cmds)?cmds:[]).join("\n"))}</pre>
-    <div class="row" style="margin-top:8px"><button class="btn pri" data-allow="${p.id}">Approve & run</button><input class="txt" id="note-${p.id}" placeholder="What to change (if rejecting)"><button class="btn" data-deny="${p.id}">Reject</button></div>
+    <div class="row" style="margin-top:8px"><button class="btn pri" data-allow="${p.id}">Approve & run</button><input class="txt" id="note-${p.id}" placeholder="Note for the worker (optional), e.g. skip a step or what to change"><button class="btn" data-deny="${p.id}">Reject</button></div>
     <div class="note">Nothing else that changes state runs without asking.</div>${err}</div>`;}
   if(p.kind==="outbox"){ const o=(t.outbox||[]).find(x=>x.id===p.outbox_id); if(!o) return "";
     return `<div class="box need"><h4>❓ ${esc(p.question)}</h4>${outboxCard(t,o,true,p.id)}<div class="note">Nothing is sent until you press Post.</div>${err}</div>`;}

@@ -84,22 +84,30 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		_ = json.Unmarshal(p.Input, &cmds)
 		e.removePending(t, p.ID)
 		e.waiting[t.ID] = false
-		var msg string
+		note := strings.TrimSpace(d.Text)
+		var msg, logMsg string
 		if d.Allow {
 			e.planCmds[t.ID] = cmds
 			e.setStep(t, "Run")
-			msg = "The user approved the plan. Run exactly these commands, in order, then verify:\n- " + strings.Join(cmds, "\n- ")
+			msg, logMsg = "The user approved the plan.", "plan approved"
+			if note != "" {
+				// The note may drop a step (e.g. "skip the Loki check"); it never adds an approved command.
+				msg += " Their note, follow it (it may tell you to skip a step; anything new still needs request_approval): " + note
+				logMsg += ", note: " + note
+			}
+			msg += "\nRun these approved commands, in order, then verify:\n- " + strings.Join(cmds, "\n- ")
 		} else {
-			msg = "The user did not approve the plan."
-			if d.Text != "" {
-				msg += " Their note: " + d.Text
+			msg, logMsg = "The user did not approve the plan.", "plan rejected"
+			if note != "" {
+				msg += " Their note: " + note
+				logMsg += ": " + note
 			}
 			msg += "\nChange the plan and call request_approval again, or ask."
 		}
 		e.settle(t)
 		e.save(t)
 		e.mu.Unlock()
-		e.logLine(taskID, "you", "info", map[bool]string{true: "plan approved", false: "plan rejected: " + d.Text}[d.Allow])
+		e.logLine(taskID, "you", "info", logMsg)
 		e.resume(taskID, msg)
 		return nil
 
