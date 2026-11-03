@@ -321,7 +321,7 @@ func (e *Engine) workerTools(taskID string) []claude.Tool {
 				if !ty.Reviewer {
 					return "", errors.New("this task type has no reviewer; call finish")
 				}
-				if t.Round >= e.cfg.MaxReviewRounds {
+				if e.roundsLeft(t) <= 0 {
 					return "", errors.New("no review rounds left; the user has been asked")
 				}
 				t.Summary = redact.String(a.Summary)

@@ -76,7 +76,7 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		e.save(t)
 		e.mu.Unlock()
 		e.logLine(taskID, "you", "text", "Q: "+p.Question+"\nA: "+ans)
-		go e.resumeWorker(taskID, "The user answered your question.\nQuestion: "+p.Question+"\nAnswer: "+ans)
+		e.resume(taskID, "The user answered your question.\nQuestion: "+p.Question+"\nAnswer: "+ans)
 		return nil
 
 	case store.PendingPlan:
@@ -100,7 +100,7 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		e.save(t)
 		e.mu.Unlock()
 		e.logLine(taskID, "you", "info", map[bool]string{true: "plan approved", false: "plan rejected: " + d.Text}[d.Allow])
-		go e.resumeWorker(taskID, msg)
+		e.resume(taskID, msg)
 		return nil
 
 	case store.PendingOutbox:
@@ -152,8 +152,8 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		} else {
 			e.waiting[t.ID] = false
 			t.Status = store.StatusRunning
-			if t.Round >= e.cfg.MaxReviewRounds && !t.ReviewPassed {
-				t.Round = 0 // the user chose to continue: give the worker fresh rounds
+			if e.roundsLeft(t) <= 0 && !t.ReviewPassed {
+				t.RoundBase = t.Round // the user chose to continue: give the worker fresh rounds
 			}
 		}
 		e.save(t)
@@ -165,7 +165,7 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		if retryReview {
 			go e.startReviewer(taskID, "")
 		} else {
-			go e.resumeWorker(taskID, "Message from the user: "+reply)
+			e.resume(taskID, "Message from the user: "+reply)
 		}
 		return nil
 	}
@@ -285,7 +285,7 @@ func (e *Engine) MessageWorker(taskID, text string) error {
 	e.waiting[taskID] = false
 	e.mu.Unlock()
 	e.logLine(taskID, "you", "text", text)
-	go e.resumeWorker(taskID, "Message from the user: "+text)
+	e.resume(taskID, "Message from the user: "+text)
 	return nil
 }
 
@@ -339,7 +339,7 @@ func (e *Engine) Reopen(taskID, instruction string) error {
 	}
 	t.Status = store.StatusRunning
 	t.ReviewPassed = false
-	t.Round = 0
+	t.RoundBase = t.Round // keep round numbers unique; the limit counts from here
 	t.Step = 0
 	t.StepNote = "Reopened"
 	t.Progress = append(t.Progress, "Reopened: "+redact.String(instruction))
@@ -354,6 +354,6 @@ func (e *Engine) Reopen(taskID, instruction string) error {
 	if hasPR {
 		msg += " After the review passes, call open_draft_pr again: Oscar pushes the branch and the open PR updates. Then finish."
 	}
-	go e.resumeWorker(taskID, msg)
+	e.resume(taskID, msg)
 	return nil
 }

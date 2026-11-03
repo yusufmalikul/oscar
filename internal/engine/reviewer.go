@@ -137,9 +137,9 @@ func (e *Engine) applyVerdict(taskID string, round int, v store.Verdict) (string
 		e.save(t)
 		switch ty.Output {
 		case "draft_pr":
-			go e.resumeWorker(taskID, "Review passed: "+v.Summary+"\n\nOpen the draft PR for each repo with open_draft_pr (short, minimal description), then call finish.")
+			e.resume(taskID, "Review passed: "+v.Summary+"\n\nOpen the draft PR for each repo with open_draft_pr (short, minimal description), then call finish.")
 		default:
-			go e.resumeWorker(taskID, "Review passed: "+v.Summary+"\n\nCall finish now with a short summary for the user.")
+			e.resume(taskID, "Review passed: "+v.Summary+"\n\nCall finish now with a short summary for the user.")
 		}
 		return "Verdict recorded: pass. You are done.", nil
 	}
@@ -149,7 +149,7 @@ func (e *Engine) applyVerdict(taskID string, round int, v store.Verdict) (string
 	for _, f := range v.Findings {
 		fmt.Fprintf(&b, "- [%s] %s — %s. Scenario: %s\n", f.Severity, f.Where, f.Problem, f.Scenario)
 	}
-	if round >= e.cfg.MaxReviewRounds {
+	if e.roundsLeft(t) <= 0 {
 		e.needsYou(t, store.Pending{Kind: store.PendingEscalate,
 			Question: fmt.Sprintf("Review failed %d times. Last findings:\n%s\nReply with guidance to continue, or cancel.", round, b.String())})
 		return "Verdict recorded: fail. The user decides what happens next. You are done.", nil
@@ -157,7 +157,7 @@ func (e *Engine) applyVerdict(taskID string, round int, v store.Verdict) (string
 	t.Status = store.StatusRunning
 	e.save(t)
 	b.WriteString("\nFix these (or explain with evidence why a finding is wrong), then submit_for_review again.")
-	go e.resumeWorker(taskID, b.String())
+	e.resume(taskID, b.String())
 	return "Verdict recorded: fail. You are done.", nil
 }
 

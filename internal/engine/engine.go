@@ -97,6 +97,9 @@ type Engine struct {
 	allow     []AllowRule
 	version   string
 
+	// resumeHook replaces resumeWorker in tests.
+	resumeHook func(taskID, msg string)
+
 	// Restart is set by the server: it shuts down and exits with ExitRestart.
 	Restart func()
 }
@@ -460,4 +463,18 @@ func (e *Engine) Shutdown() {
 		go func(s *claude.Session) { defer wg.Done(); s.Close() }(s)
 	}
 	wg.Wait()
+}
+
+// resume sends msg to the task's worker in the background.
+func (e *Engine) resume(taskID, msg string) {
+	if e.resumeHook != nil {
+		e.resumeHook(taskID, msg)
+		return
+	}
+	go e.resumeWorker(taskID, msg)
+}
+
+// roundsLeft is how many review rounds the task may still use. Must hold e.mu.
+func (e *Engine) roundsLeft(t *store.Task) int {
+	return e.cfg.MaxReviewRounds - (t.Round - t.RoundBase)
 }

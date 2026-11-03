@@ -117,7 +117,9 @@ type Task struct {
 	Step     int      `json:"step"`
 	StepNote string   `json:"step_note,omitempty"`
 	Round    int      `json:"round"`
-	Summary  string   `json:"summary,omitempty"`
+	// RoundBase is Round when the task was last reopened; the round limit counts from here.
+	RoundBase int    `json:"round_base,omitempty"`
+	Summary   string `json:"summary,omitempty"`
 
 	Workspace       string     `json:"workspace"`
 	Worktrees       []Worktree `json:"worktrees,omitempty"`
