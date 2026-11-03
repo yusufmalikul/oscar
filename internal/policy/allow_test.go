@@ -93,3 +93,15 @@ func TestTunnelledLocalhostStaysGated(t *testing.T) {
 		t.Errorf("plain local db: got gate")
 	}
 }
+
+func TestHostInShellVariable(t *testing.T) {
+	w := Context{Role: Worker}
+	cmd := "U=localhost:8383/api/v2/customer_rooms\nfor b in a b; do curl -s -o /tmp/r.json $U -d \"$b\"; done"
+	if d := CheckCommand(w, cmd); d.Action == Gate {
+		t.Errorf("local URL in a variable: got gate (%s %q)", d.Reason, d.Subject)
+	}
+	cmd = "U=https://api.example.com/x; curl -X POST $U -d 1"
+	if d := CheckCommand(w, cmd); d.Action != Gate || d.Subject != "api.example.com" {
+		t.Errorf("remote URL in a variable: got %v %q", d.Action, d.Subject)
+	}
+}

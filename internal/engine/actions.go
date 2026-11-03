@@ -319,3 +319,41 @@ func (e *Engine) Cancel(taskID string) error {
 	go e.schedule()
 	return nil
 }
+
+// Reopen continues a finished task in its own session, worktrees and branch, with a new
+// instruction. The review starts over; open_draft_pr then updates the PR that is open.
+func (e *Engine) Reopen(taskID, instruction string) error {
+	instruction = strings.TrimSpace(instruction)
+	if instruction == "" {
+		return errors.New("say what should change")
+	}
+	e.mu.Lock()
+	t, err := e.task(taskID)
+	if err != nil {
+		e.mu.Unlock()
+		return err
+	}
+	if t.Status != store.StatusDone {
+		e.mu.Unlock()
+		return fmt.Errorf("%s is %s; only done tasks can be reopened", taskID, t.Status)
+	}
+	t.Status = store.StatusRunning
+	t.ReviewPassed = false
+	t.Round = 0
+	t.Step = 0
+	t.StepNote = "Reopened"
+	t.Progress = append(t.Progress, "Reopened: "+redact.String(instruction))
+	e.finished[taskID] = false
+	e.waiting[taskID] = false
+	e.save(t)
+	hasPR := len(t.PRs) > 0
+	e.mu.Unlock()
+	e.logLine(taskID, "you", "text", "Reopened: "+instruction)
+	msg := "The user reopened this task. New instruction:\n" + instruction +
+		"\n\nWork in the same worktree(s) and branch. Prove the change (test or screenshot), commit, then submit_for_review."
+	if hasPR {
+		msg += " After the review passes, call open_draft_pr again: Oscar pushes the branch and the open PR updates. Then finish."
+	}
+	go e.resumeWorker(taskID, msg)
+	return nil
+}

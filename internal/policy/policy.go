@@ -301,6 +301,7 @@ var (
 	reUserHost   = regexp.MustCompile(`\b[\w.-]+@([A-Za-z0-9.-]+)`)
 	reDashH      = regexp.MustCompile(`\s-h\s*([^\s'"]+)`)
 	reDSNHost    = regexp.MustCompile(`(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|rediss?)://(?:[^@/\s]*@)?(\[[^\]]+\]|[^:/\s'"?]+)`)
+	reEnvName    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	reAwsService = regexp.MustCompile(`(?i)\baws\s+([a-z0-9-]+)`)
 )
 
@@ -319,8 +320,12 @@ func subjectOf(kind, cmd string) string {
 			hosts = append(hosts, m[1])
 		}
 		for _, tok := range strings.Fields(cmd) {
-			tok = strings.Trim(tok, `'"`)
-			if strings.HasPrefix(tok, "-") || strings.Contains(tok, "://") || strings.Contains(tok, "=") {
+			tok = strings.Trim(tok, `'";`)
+			// VAR=host:port/path assignments hold URLs too (scheme URLs are found above).
+			if k, v, ok := strings.Cut(tok, "="); ok && reEnvName.MatchString(k) {
+				tok = strings.Trim(v, `'";`)
+			}
+			if tok == "" || strings.HasPrefix(tok, "-") || strings.Contains(tok, "://") || strings.Contains(tok, "=") {
 				continue
 			}
 			if m := reBareHost.FindStringSubmatch(tok); m != nil && (strings.Contains(m[1], ".") || isLocalHost(m[1])) && (m[2] != "" || m[3] != "" || isLocalHost(m[1])) {

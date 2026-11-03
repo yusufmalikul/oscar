@@ -28,6 +28,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/decide", s.decide)
 	mux.HandleFunc("POST /api/tasks/{id}/message", s.message)
 	mux.HandleFunc("POST /api/tasks/{id}/cancel", s.cancel)
+	mux.HandleFunc("POST /api/tasks/{id}/reopen", s.reopen)
 	mux.HandleFunc("POST /api/tasks/{id}/outbox/{oid}", s.editOutbox)
 	mux.HandleFunc("POST /api/captain/decide", s.decideCaptain)
 	mux.HandleFunc("POST /api/self/update", s.selfUpdate)
@@ -219,6 +220,19 @@ func (s *Server) allowRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.e.RemoveAllowRule(a.Kind, a.Subject); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) reopen(w http.ResponseWriter, r *http.Request) {
+	var a struct{ Text string }
+	if err := read(w, r, &a); err != nil {
+		fail(w, err)
+		return
+	}
+	if err := s.e.Reopen(r.PathValue("id"), a.Text); err != nil {
 		fail(w, err)
 		return
 	}

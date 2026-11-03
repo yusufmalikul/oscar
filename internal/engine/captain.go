@@ -189,6 +189,16 @@ func (e *Engine) captainTools() []claude.Tool {
 				}
 				return "Sent.", nil
 			}},
+		{Name: "reopen_task", Description: "Reopen a done task with a new instruction (e.g. fix a bug found later in the same PR). The worker continues in the same branch and the open PR updates.",
+			Schema: obj(map[string]any{"id": str, "instruction": str}, "id", "instruction"),
+			Handler: func(_ context.Context, raw json.RawMessage) (string, error) {
+				var a struct{ ID, Instruction string }
+				_ = json.Unmarshal(raw, &a)
+				if err := e.Reopen(normalizeID(a.ID), a.Instruction); err != nil {
+					return "", err
+				}
+				return "Reopened.", nil
+			}},
 		{Name: "cancel_task", Description: "Cancel a task (only when the user asks).",
 			Schema: obj(map[string]any{"id": str}, "id"),
 			Handler: func(_ context.Context, raw json.RawMessage) (string, error) {

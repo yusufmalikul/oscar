@@ -34,6 +34,8 @@ Scratch dir for notes and temp files: {{.Scratch}}
 - Keep the diff and the PR description minimal and in scope. No mention of internal tooling in PR text.
 - Do not write to memory. Put lessons in finish(learnings).
 - If you are blocked (missing access, unclear goal), use ask. Do not guess.
+- Start long-running local servers detached (`nohup … &` or `setsid`), with logs in your scratch dir,
+  so they survive an Oscar restart. Stop them when the task is done, unless the user asked to keep them.
 {{if .Rules}}
 ## Local rules from the user
 {{.Rules}}

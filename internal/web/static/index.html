@@ -393,7 +393,8 @@ function paneHtml(t){
     const prog=t.progress?.length?`<div class="box"><h4>Progress</h4><ul>${t.progress.map(p=>`<li>${md(p)}</li>`).join("")}</ul></div>`:"";
     const brief=`<div class="box"><h4>Brief</h4><div class="slk-b">${md(t.brief)}</div></div>`;
     const live=["running","review","needs_you"].includes(t.status)?`<div class="box"><h4>Message the worker</h4><div class="row"><input class="txt" id="msgw" placeholder="Extra instruction"><button class="btn" id="msgwBtn">Send</button><button class="btn" data-cancel-task>Cancel task</button></div><div class="err" id="err-msgw"></div></div>`:"";
-    return pend+prs+sum+prog+brief+live;
+    const reopen=t.status==="done"&&t.workspace?`<div class="box"><h4>Reopen</h4><div class="small" style="margin-bottom:6px">Continue in the same branch with a new instruction. The review starts over; an open PR gets the new commits.</div><div class="row"><input class="txt" id="reopenTxt" placeholder="What should change"><button class="btn" id="reopenBtn">Reopen</button></div><div class="err" id="err-reopen"></div></div>`:"";
+    return pend+prs+sum+prog+brief+live+reopen;
   }
   if(tab==="diff"){ if(diffs[t.id]===undefined){ api(`/api/tasks/${t.id}/diff`).then(r=>{diffs[t.id]=r.diff;renderDetail();}).catch(e=>{diffs[t.id]="Error: "+e.message;renderDetail();}); return '<div class="box small">Loading diff…</div>'; }
     return `<div class="box"><h4>Changes <button class="btn sm" id="reDiff">Refresh</button></h4><pre class="diff">${colorDiff(diffs[t.id]||"No changes yet.")}</pre></div>`; }
@@ -458,6 +459,7 @@ function bindDetail(t){
   on("[data-cancel-task]",()=>{ if(confirm(`Cancel ${t.id}? Worktrees are kept.`)) act(()=>api(`/api/tasks/${t.id}/cancel`,{})); });
   const mb=$("#msgwBtn"); if(mb) mb.onclick=()=>act(async()=>{await api(`/api/tasks/${t.id}/message`,{text:$("#msgw").value});$("#msgw").value="";},"err-msgw");
   const rd=$("#reDiff"); if(rd) rd.onclick=()=>{delete diffs[t.id];renderDetail();};
+  const rb=$("#reopenBtn"); if(rb) rb.onclick=()=>act(()=>api(`/api/tasks/${t.id}/reopen`,{text:$("#reopenTxt").value}),"err-reopen");
   const mu=$("#mergeUpd"); if(mu) mu.onclick=()=>{ if(confirm(`Merge the ${t.id} PR into Oscar and restart with it?`)) act(()=>api("/api/self/update",{task_id:t.id}),"err-upd"); };
 }
 

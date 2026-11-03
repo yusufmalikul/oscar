@@ -412,10 +412,10 @@ func (e *Engine) openDraftPR(ctx context.Context, taskID string, raw json.RawMes
 			wt = &t.Worktrees[i]
 		}
 	}
+	existing := ""
 	for _, p := range t.PRs {
 		if p.Repo == a.Repo {
-			e.mu.Unlock()
-			return "A draft PR already exists: " + p.URL, nil
+			existing = p.URL
 		}
 	}
 	e.mu.Unlock()
@@ -438,6 +438,11 @@ func (e *Engine) openDraftPR(ctx context.Context, taskID string, raw json.RawMes
 	e.logLine(taskID, "oscar", "info", "pushing "+wt.Branch)
 	if err := runCmd(ctx, wt.Path, nil, "git", "push", "-u", "origin", wt.Branch); err != nil {
 		return "", err
+	}
+	if existing != "" {
+		// A reopened task: pushing the same branch updates the PR that is already open.
+		e.logLine(taskID, "oscar", "info", "pushed new commits to the existing PR "+existing)
+		return "Pushed. The existing draft PR now has your new commits: " + existing + ". Update its description only if the user asked.", nil
 	}
 	res, err := runIntegration(ctx, e.cfg.Integration(a.Repo, "draft_pr"), map[string]any{
 		"repo": a.Repo, "repo_path": e.cfg.RepoPath(a.Repo), "worktree": wt.Path,
