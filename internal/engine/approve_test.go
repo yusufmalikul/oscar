@@ -37,7 +37,7 @@ func TestApproveToolDoesNotDeadlock(t *testing.T) {
 	}
 	// The engine must still answer.
 	ok := make(chan struct{})
-	go func() { e.Snapshot(); close(ok) }()
+	go func() { e.Snapshot(0); close(ok) }()
 	select {
 	case <-ok:
 	case <-time.After(time.Second):

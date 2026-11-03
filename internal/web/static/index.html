@@ -81,6 +81,7 @@ code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size
 
 .msgs{padding:12px;display:flex;flex-direction:column;gap:8px}
 .msg{max-width:88%;padding:7px 10px;border-radius:12px;background:var(--panel);border:1px solid var(--line)}
+.loadmore{align-self:center}
 .msg.me{align-self:flex-end;background:var(--accent-soft);border-color:transparent}
 .msg .who{font-size:11px;color:var(--muted);margin-bottom:2px;font-weight:600}
 .paste{font-size:12px;color:var(--muted);border-left:3px solid var(--line);padding-left:8px;margin-top:4px}
@@ -226,6 +227,9 @@ input.txt{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;
 const GROUPS=[{key:"needs_you",label:"Needs you",cls:"need"},{key:"review",label:"In review",cls:"review"},{key:"running",label:"Running",cls:"run"},
   {key:"queued",label:"Queued",cls:"todo"},{key:"done",label:"Done",cls:"done"},{key:"cancelled",label:"Cancelled",cls:"todo"},{key:"failed",label:"Failed",cls:"bad"}];
 let S={tasks:[],types:{},chat:[],captain_pending:[],health:{}};
+// chatFrom is the number (seq) of the oldest Captain message on screen. 0 = not set
+// yet: the server then sends only the last page. "Load more" lowers it.
+let chatFrom=0;
 let selected=null, tab="summary", filter="all", logs={}, diffs={}, editing=null;
 const collapsed=(()=>{try{return JSON.parse(localStorage.getItem("oscar.collapsed"))||{done:true,cancelled:true,failed:true}}catch{return{done:true,cancelled:true,failed:true}}})();
 const $=s=>document.querySelector(s);
@@ -246,8 +250,9 @@ let refreshTimer=null;
 function refreshSoon(){ clearTimeout(refreshTimer); refreshTimer=setTimeout(load,150); }
 async function load(){
   const prevNeed=S.tasks.filter(t=>t.status==="needs_you").length+S.captain_pending.length;
-  S=await api("/api/state");
-  S.tasks=S.tasks||[]; S.chat=S.chat||[]; S.captain_pending=S.captain_pending||[]; S.types=S.types||{}; S.health=S.health||{};
+  S=await api("/api/state"+(chatFrom?"?chat_from="+chatFrom:""));
+  S.tasks=S.tasks||[]; S.chat=S.chat||[];
+  if(!chatFrom&&S.chat.length) chatFrom=S.chat[0].seq; // keep this start, so the list only grows S.captain_pending=S.captain_pending||[]; S.types=S.types||{}; S.health=S.health||{};
   const need=S.tasks.filter(t=>t.status==="needs_you").length+S.captain_pending.length;
   if(need>prevNeed) notifyBrowser("Oscar needs you",(S.tasks.find(t=>t.status==="needs_you")?.pending?.[0]?.question)||"A decision is waiting");
   render();
@@ -257,7 +262,7 @@ function connect(){
   es.onmessage=ev=>{
     const m=JSON.parse(ev.data);
     if(m.kind==="log"){ (logs[m.task_id]=logs[m.task_id]||[]).push(m.data); const t=task(m.task_id); if(t) t.last_activity=m.data.at; if(selected===m.task_id&&tab==="log") renderLog(); }
-    else if(m.kind==="chat"){ S.chat.push(m.data); renderChat(true); }
+    else if(m.kind==="chat"){ if(!S.chat.some(c=>c.seq===m.data.seq)) S.chat.push(m.data); if(!chatFrom) chatFrom=m.data.seq; renderChat(true); }
     else refreshSoon();
   };
   es.onerror=()=>{ $("#hCaptain").innerHTML='<span class="dot"></span>offline'; es.close(); setTimeout(()=>{connect();load();},3000); };
@@ -310,15 +315,23 @@ function renderBoard(){
 /* ---------- chat ---------- */
 function renderChat(scroll){
   const box=$("#chatScroll"), atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<80;
-  $("#msgs").innerHTML=S.chat.map(m=>`<div class="msg ${m.from==="user"?"me":m.from==="oscar"?"oscar":""}">${m.from==="captain"?'<div class="who">Captain</div>':""}<div class="md">${md(m.text)}</div></div>`).join("")
+  $("#msgs").innerHTML=(S.chat_more?'<button class="btn sm loadmore" id="chatMore">Load more</button>':"")+S.chat.map(m=>`<div class="msg ${m.from==="user"?"me":m.from==="oscar"?"oscar":""}">${m.from==="captain"?'<div class="who">Captain</div>':""}<div class="md">${md(m.text)}</div></div>`).join("")
     ||'<div class="empty">Tell the Captain what you need: type a task, paste a Slack thread or a PR link.</div>';
   if(scroll||atBottom) box.scrollTop=box.scrollHeight;
+  const lm=$("#chatMore"); if(lm) lm.onclick=loadMoreChat;
   $("#capPend").innerHTML=S.captain_pending.map(p=>`<div class="box need cap-pend"><h4>❓ ${esc(p.question)}</h4>
     ${p.detail?`<pre>${esc(p.detail)}</pre>`:""}
     <div class="actions"><button class="btn pri" data-cp="${p.id}" data-cp-allow="1">${p.kind==="type"?"Approve type":"Allow"}</button>
     ${p.kind==="tool"?alwaysBtn(p,"data-cp-always"):""}<button class="btn" data-cp="${p.id}" data-cp-allow="0">${p.kind==="type"?"Reject":"Deny"}</button></div><div class="err" id="err-${p.id}"></div></div>`).join("");
   $("#capPend").querySelectorAll("[data-cp]").forEach(b=>b.onclick=()=>act(()=>api("/api/captain/decide",{pending_id:b.dataset.cp,allow:b.dataset.cpAllow==="1"}),"err-"+b.dataset.cp));
   $("#capPend").querySelectorAll("[data-cp-always]").forEach(b=>b.onclick=()=>act(()=>api("/api/captain/decide",{pending_id:b.dataset.cpAlways,allow:true,always:true}),"err-"+b.dataset.cpAlways));
+}
+async function loadMoreChat(){
+  const box=$("#chatScroll"), fromBottom=box.scrollHeight-box.scrollTop, prev=chatFrom;
+  const btn=$("#chatMore"); btn.disabled=true; btn.textContent="Loading…";
+  chatFrom=Math.max(1,(S.chat[0]?.seq||chatFrom)-(S.health.chat_page||50));
+  try{ await load(); box.scrollTop=box.scrollHeight-fromBottom; } // keep the same message in view
+  catch(e){ chatFrom=prev; btn.disabled=false; btn.textContent="Load more"; toast("Could not load older messages",e.message); }
 }
 async function sendChat(){
   const v=$("#input").value.trim(); if(!v) return;

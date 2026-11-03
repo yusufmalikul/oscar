@@ -11,6 +11,7 @@ package store
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -153,19 +154,23 @@ type ChatMessage struct {
 	At   time.Time `json:"at"`
 	From string    `json:"from"` // user | captain | oscar
 	Text string    `json:"text"`
+	// Seq is the message's line number in chat.jsonl, counting from 1. It is set
+	// only when reading, so it is never written to the file.
+	Seq int `json:"seq,omitempty"`
 }
 
 // Store is safe for concurrent use.
 type Store struct {
-	dir string
-	mu  sync.Mutex
+	dir   string
+	mu    sync.Mutex
+	chatN int // lines in chat.jsonl; -1 until counted
 }
 
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(dir, "tasks"), 0o700); err != nil {
 		return nil, err
 	}
-	return &Store{dir: dir}, nil
+	return &Store{dir: dir, chatN: -1}, nil
 }
 
 func (s *Store) Dir() string { return s.dir }
@@ -232,12 +237,59 @@ func (s *Store) ReadLog(id string, max int) ([]LogLine, error) {
 	return readJSONL[LogLine](filepath.Join(s.TaskDir(id), "log.jsonl"), max)
 }
 
-func (s *Store) AppendChat(m ChatMessage) error {
-	return appendJSON(filepath.Join(s.dir, "chat.jsonl"), m)
+// AppendChat adds a message and returns its number (its Seq).
+func (s *Store) AppendChat(m ChatMessage) (int, error) {
+	path := filepath.Join(s.dir, "chat.jsonl")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.chatN < 0 {
+		b, err := os.ReadFile(path)
+		if err != nil && !os.IsNotExist(err) {
+			return 0, err
+		}
+		s.chatN = bytes.Count(b, []byte{'\n'})
+	}
+	m.Seq = 0 // the number comes from the line, it is not stored
+	if err := appendJSON(path, m); err != nil {
+		return 0, err
+	}
+	s.chatN++
+	return s.chatN, nil
 }
 
-func (s *Store) ReadChat(max int) ([]ChatMessage, error) {
-	return readJSONL[ChatMessage](filepath.Join(s.dir, "chat.jsonl"), max)
+// ReadChat returns the chat from message number from (counting from 1) to the
+// end, oldest first. When from <= 0 it returns only the last `last` messages.
+// Each message carries its number in Seq, so the UI can ask for older ones.
+func (s *Store) ReadChat(from, last int) ([]ChatMessage, error) {
+	f, err := os.Open(filepath.Join(s.dir, "chat.jsonl"))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var out []ChatMessage
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
+	for n := 1; sc.Scan(); n++ {
+		if from > 0 && n < from {
+			continue
+		}
+		var m ChatMessage
+		if json.Unmarshal(sc.Bytes(), &m) != nil {
+			continue
+		}
+		m.Seq = n
+		out = append(out, m)
+		if from <= 0 && last > 0 && len(out) > 2*last {
+			out = append(out[:0], out[len(out)-last:]...) // keep memory small on a long chat
+		}
+	}
+	if from <= 0 && last > 0 && len(out) > last {
+		out = out[len(out)-last:]
+	}
+	return out, sc.Err()
 }
 
 // Value reads a small JSON value file (e.g. captain.json).

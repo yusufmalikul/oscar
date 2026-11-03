@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,7 +72,12 @@ func read(w http.ResponseWriter, r *http.Request, v any) error {
 	return json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(v)
 }
 
-func (s *Server) state(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.e.Snapshot()) }
+// state returns the full UI state. chat_from (optional) is the number of the
+// oldest chat message the page already shows, so older pages stay loaded.
+func (s *Server) state(w http.ResponseWriter, r *http.Request) {
+	from, _ := strconv.Atoi(r.URL.Query().Get("chat_from"))
+	writeJSON(w, s.e.Snapshot(from))
+}
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	fl, ok := w.(http.Flusher)

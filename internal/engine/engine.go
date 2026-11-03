@@ -268,7 +268,7 @@ func (e *Engine) logLine(taskID, who, kind, text string) {
 
 func (e *Engine) chat(from, text string) {
 	m := store.ChatMessage{At: time.Now(), From: from, Text: redact.String(text)}
-	_ = e.st.AppendChat(m)
+	m.Seq, _ = e.st.AppendChat(m)
 	e.mu.Lock()
 	e.publish(Event{Kind: "chat", Data: m})
 	e.mu.Unlock()
@@ -280,12 +280,19 @@ type State struct {
 	Tasks      []*store.Task        `json:"tasks"`
 	Types      map[string]*TaskType `json:"types"`
 	Chat       []store.ChatMessage  `json:"chat"`
+	ChatMore   bool                 `json:"chat_more"` // older messages exist before Chat[0]
 	CapPending []store.Pending      `json:"captain_pending"`
 	Health     map[string]any       `json:"health"`
 }
 
-func (e *Engine) Snapshot() State {
-	chat, _ := e.st.ReadChat(300)
+// ChatPage is how many Captain messages the UI gets at first, and how many
+// more each "Load more" adds.
+const ChatPage = 50
+
+// Snapshot returns the state for the UI. chatFrom is the number of the oldest
+// chat message the UI shows (from "Load more"); 0 means the last ChatPage.
+func (e *Engine) Snapshot(chatFrom int) State {
+	chat, _ := e.st.ReadChat(chatFrom, ChatPage)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	ts := make([]*store.Task, 0, len(e.tasks))
@@ -297,11 +304,12 @@ func (e *Engine) Snapshot() State {
 	if chat == nil {
 		chat = []store.ChatMessage{}
 	}
-	return State{Tasks: ts, Types: e.types, Chat: chat, CapPending: append([]store.Pending{}, e.capPend...),
+	more := len(chat) > 0 && chat[0].Seq > 1
+	return State{Tasks: ts, Types: e.types, Chat: chat, ChatMore: more, CapPending: append([]store.Pending{}, e.capPend...),
 		Health: map[string]any{
 			"workers": len(e.workers), "reviewers": len(e.reviewers), "max_workers": e.cfg.MaxWorkers,
 			"captain": e.captain != nil, "captain_busy": e.capBusy,
-			"allow_rules": len(e.allow), "self_repo": e.cfg.Self.Repo, "updating": e.updating, "version": e.version,
+			"chat_page": ChatPage, "allow_rules": len(e.allow), "self_repo": e.cfg.Self.Repo, "updating": e.updating, "version": e.version,
 		}}
 }
 
