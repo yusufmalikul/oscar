@@ -87,6 +87,7 @@ type Engine struct {
 	planCmds  map[string][]string      // task id → commands approved in the ops plan
 	finished  map[string]bool          // task id → worker called finish
 	lastText  map[string]string        // task id → last worker text (for escalations)
+	queued    map[string]int           // task id → messages sent to the worker whose turn has not ended
 	capPend   []store.Pending          // gated actions of the Captain
 	captain   *claude.Session
 	capBusy   bool
@@ -113,7 +114,7 @@ func New(ctx context.Context, cfg config.Config) (*Engine, error) {
 		tasks: map[string]*store.Task{}, types: map[string]*TaskType{},
 		workers: map[string]*claude.Session{}, reviewers: map[string]*claude.Session{},
 		waiting: map[string]bool{}, waiters: map[string]chan decision{}, planCmds: map[string][]string{},
-		finished: map[string]bool{}, lastText: map[string]string{}, subs: map[chan Event]struct{}{},
+		finished: map[string]bool{}, lastText: map[string]string{}, queued: map[string]int{}, subs: map[chan Event]struct{}{},
 	}
 	_ = st.Value(allowFile, &e.allow)
 	if err := e.loadTypes(); err != nil {

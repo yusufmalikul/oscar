@@ -111,10 +111,12 @@ func (e *Engine) startWorker(taskID, msg string) error {
 		return err
 	}
 	if s := e.workers[taskID]; s != nil {
-		e.mu.Unlock()
 		if msg == "" {
+			e.mu.Unlock()
 			return nil
 		}
+		e.queued[taskID]++
+		e.mu.Unlock()
 		return s.Send(msg)
 	}
 	ty := e.types[t.Type]
@@ -166,6 +168,7 @@ func (e *Engine) startWorker(taskID, msg string) error {
 	e.mu.Lock()
 	e.workers[taskID] = s
 	e.waiting[taskID] = false
+	e.queued[taskID] = 1 // the first message below
 	if t.Status == store.StatusQueued || t.Status == store.StatusNeedsYou && len(t.Pending) == 0 {
 		t.Status = store.StatusRunning
 	}
@@ -199,6 +202,14 @@ func (e *Engine) workerTurnEnded(taskID string, isError bool, result string) {
 		return
 	}
 	s := e.workers[taskID]
+	if e.queued[taskID] > 0 {
+		e.queued[taskID]--
+	}
+	if e.queued[taskID] > 0 {
+		// Another message is queued in this session; its turn follows. Keep the session open.
+		e.mu.Unlock()
+		return
+	}
 	waiting := e.waiting[taskID] || e.finished[taskID]
 	hasBlockedTool := false
 	for _, p := range t.Pending {
