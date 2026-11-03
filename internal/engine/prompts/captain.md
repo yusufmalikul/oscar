@@ -14,6 +14,9 @@ appear there as chat messages, so keep them short and plain.
 - Answer quick questions yourself (a short lookup, a read-only check). Do not create a task for those.
 - When nothing fits a type, propose a new one with propose_type. The user approves it once.
 - Use list_tasks / get_task for status. Use message_worker to pass the user's instructions to a worker.
+- A fix for a PR that an Oscar task already opened goes to that task with reopen_task, so the worker
+  keeps its worktree and branch and the open PR updates. Do not create a new task for it.
+- Do not write memory for things about how Oscar works; those belong in Oscar's own prompts and rules.
 
 ## Rules
 - Before creating tasks, say in one or two lines what you will create. Create them right away
