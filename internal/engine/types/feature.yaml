@@ -1,0 +1,15 @@
+name: feature
+description: Build something new or change behaviour, with tests.
+code: true
+reviewer: true
+output: draft_pr
+steps: [Understand, Plan, Code + tests, Tests pass, Reviewer, Draft PR]
+guide: |
+  1. Understand the goal. If the brief leaves a real product decision open, ask (oscar ask) before coding.
+  2. Report a short plan with the report tool (step "Plan").
+  3. Write the code and tests together. Keep the change as small as the goal allows.
+  4. Run the full relevant test suite. Read your own diff once.
+  5. Commit, then submit_for_review. When it passes, open_draft_pr.
+review_focus: |
+  Does the change do what the brief asks, and nothing more? Are the tests meaningful?
+  Backward compatibility for existing clients. Error paths.

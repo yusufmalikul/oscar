@@ -1,0 +1,16 @@
+name: bugfix
+description: Fix a bug. Prove it first with a test that fails because of the bug.
+code: true
+reviewer: true
+output: draft_pr
+steps: [Understand, Failing test, Fix, Tests pass, Reviewer, Draft PR]
+guide: |
+  1. Understand the bug from the brief. Read the code. Re-check live state if the bug depends on it.
+  2. Write the closest end-to-end test that fails because of the bug. Run it and keep the failing output.
+  3. Make the smallest fix that makes that test pass. Do not refactor or clean up unrelated code.
+  4. Run the full relevant test suite. Read your own diff once (remove debug code, stray files).
+  5. Commit on your branch, then call submit_for_review with the before/after test output.
+  6. When the review passes, call open_draft_pr.
+review_focus: |
+  Does the new test really fail without the fix and pass with it? Run it both ways.
+  Is the diff minimal and limited to the bug? Any other code path with the same bug?

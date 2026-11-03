@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Oscar</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --panel2:#f1f3f6; --line:#e3e6eb;
+  --text:#1b1f24; --muted:#667085; --accent:#3b5bdb; --accent-soft:#e7ecff;
+  --need:#c2410c; --need-soft:#fff1e6; --review:#7c3aed; --review-soft:#f3ecff;
+  --run:#0369a1; --run-soft:#e6f4fb; --done:#15803d; --done-soft:#e8f7ee;
+  --todo:#667085; --todo-soft:#eef0f3; --bad:#b91c1c; --bad-soft:#fdecec;
+  --code:#f6f8fa; --add:#e6ffec; --del:#ffebe9;
+  --radius:9px; --shadow:0 1px 2px rgba(16,24,40,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1115; --panel:#171a20; --panel2:#1e222a; --line:#2a2f39;
+    --text:#e6e8ec; --muted:#98a2b3; --accent:#7c93ff; --accent-soft:#232a45;
+    --need:#fb923c; --need-soft:#3a2416; --review:#b794f6; --review-soft:#2c2140;
+    --run:#38bdf8; --run-soft:#132a38; --done:#4ade80; --done-soft:#14301f;
+    --todo:#98a2b3; --todo-soft:#232730; --bad:#f87171; --bad-soft:#3a1a1a;
+    --code:#12151a; --add:#12301c; --del:#3a1717; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --panel:#171a20; --panel2:#1e222a; --line:#2a2f39;
+  --text:#e6e8ec; --muted:#98a2b3; --accent:#7c93ff; --accent-soft:#232a45;
+  --need:#fb923c; --need-soft:#3a2416; --review:#b794f6; --review-soft:#2c2140;
+  --run:#38bdf8; --run-soft:#132a38; --done:#4ade80; --done-soft:#14301f;
+  --todo:#98a2b3; --todo-soft:#232730; --bad:#f87171; --bad-soft:#3a1a1a;
+  --code:#12151a; --add:#12301c; --del:#3a1717; --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+
+.top{height:44px;display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.logo{font-weight:700;display:flex;align-items:center;gap:8px}
+.logo .dot{width:22px;height:22px;border-radius:6px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:12px}
+.mocktag{font-size:10.5px;color:var(--muted);border:1px dashed var(--line);border-radius:5px;padding:0 5px;font-weight:500}
+.health{margin-left:auto;display:flex;gap:14px;color:var(--muted);font-size:12px;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:6px}
+.led{width:8px;height:8px;border-radius:50%;background:var(--done)}
+.iconbtn{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:4px 9px}
+
+.app{display:grid;grid-template-columns:290px minmax(320px,1fr) minmax(420px,1.2fr);height:calc(100% - 44px)}
+.col{min-height:0;display:flex;flex-direction:column;border-right:1px solid var(--line)}
+.col:last-child{border-right:0}
+.colhead{padding:8px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;background:var(--panel)}
+.colhead h2{font-size:12px;margin:0;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.scroll{overflow:auto;flex:1;min-height:0}
+
+.filters{display:flex;gap:4px;padding:8px 10px 0;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:1px 9px;font-size:11.5px;color:var(--muted)}
+.chip.on{background:var(--accent-soft);border-color:transparent;color:var(--accent);font-weight:600}
+.group{padding:6px 10px 0}
+.ghead{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:2px 2px 6px;cursor:pointer;user-select:none}
+.ghead .chev{margin-left:auto;font-size:13px;color:var(--muted)}
+.count{background:var(--panel2);border-radius:20px;padding:0 7px;color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:7px 10px;margin-bottom:6px;box-shadow:var(--shadow);cursor:pointer;border-left:3px solid var(--c,var(--line))}
+.card:hover{border-color:var(--accent)}
+.card.sel{outline:2px solid var(--accent);outline-offset:-1px}
+.row1{display:flex;gap:6px;align-items:center;min-width:0}
+.tid{font-weight:700;white-space:nowrap}
+.card .title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.card .sub{font-size:11.5px;color:var(--muted);margin-top:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.card .q{font-size:12px;color:var(--need);margin-top:3px}
+.repo{white-space:nowrap;font-size:11px;color:var(--muted);background:var(--panel2);border-radius:5px;padding:0 5px}
+.type{white-space:nowrap;font-size:10.5px;font-weight:600;border-radius:5px;padding:0 5px;border:1px solid var(--line);color:var(--muted)}
+.s-need{--c:var(--need)} .s-review{--c:var(--review)} .s-run{--c:var(--run)} .s-done{--c:var(--done)} .s-todo{--c:var(--todo)}
+.badge{font-size:11px;font-weight:600;border-radius:20px;padding:1px 8px;background:var(--bs);color:var(--bc);white-space:nowrap}
+.b-need{--bs:var(--need-soft);--bc:var(--need)} .b-review{--bs:var(--review-soft);--bc:var(--review)}
+.b-run{--bs:var(--run-soft);--bc:var(--run)} .b-done{--bs:var(--done-soft);--bc:var(--done)} .b-todo{--bs:var(--todo-soft);--bc:var(--todo)}
+.b-bad{--bs:var(--bad-soft);--bc:var(--bad)}
+.spin{display:inline-block;width:9px;height:9px;border:2px solid var(--run);border-right-color:transparent;border-radius:50%;animation:sp 1s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.msgs{padding:12px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:88%;padding:7px 10px;border-radius:12px;background:var(--panel);border:1px solid var(--line)}
+.msg.me{align-self:flex-end;background:var(--accent-soft);border-color:transparent}
+.msg .who{font-size:11px;color:var(--muted);margin-bottom:2px;font-weight:600}
+.paste{font-size:12px;color:var(--muted);border-left:3px solid var(--line);padding-left:8px;margin-top:4px}
+.plan{margin:6px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.plan .pi{padding:6px 9px;border-bottom:1px solid var(--line);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.plan .pi:last-child{border-bottom:0}
+.actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:5px 11px;font-weight:500}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:disabled{opacity:.55;cursor:default}
+.composer{border-top:1px solid var(--line);padding:8px;background:var(--panel);display:flex;gap:8px;align-items:flex-end}
+.composer textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;background:var(--bg);color:var(--text);font:inherit;min-height:38px;max-height:140px}
+
+.dhead{padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+.dhead h3{margin:3px 0 4px;font-size:15px}
+.meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted)}
+.steps{display:flex;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);overflow-x:auto}
+.step{flex:1;min-width:58px;text-align:center;font-size:10.5px;color:var(--muted);position:relative}
+.step .ball{width:16px;height:16px;border-radius:50%;margin:0 auto 2px;display:grid;place-items:center;font-size:9px;background:var(--panel2);border:2px solid var(--line);position:relative;z-index:1}
+.step::before{content:"";position:absolute;top:8px;left:-50%;width:100%;height:2px;background:var(--line)}
+.step:first-child::before{display:none}
+.step.ok .ball{background:var(--done);border-color:var(--done);color:#fff}
+.step.ok::before,.step.now::before,.step.wait::before{background:var(--done)}
+.step.now .ball{border-color:var(--run);background:var(--run-soft)}
+.step.now,.step.wait{color:var(--text);font-weight:600}
+.step.wait .ball{background:var(--need);border-color:var(--need);color:#fff}
+.tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--line);background:var(--panel);overflow-x:auto}
+.tab{border:0;background:none;padding:7px 9px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.pane{padding:12px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px}
+.box h4{margin:0 0 6px;font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.box.need{border-color:var(--need);background:var(--need-soft)}
+.box ul{margin:0;padding-left:18px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:9px;overflow:auto;margin:0;white-space:pre}
+.diff .a{background:var(--add);display:block} .diff .d{background:var(--del);display:block} .diff .h{color:var(--muted);display:block}
+.tests{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.find{border-left:3px solid var(--need);padding:6px 10px;margin:6px 0;background:var(--panel2);border-radius:0 6px 6px 0}
+.find.ok{border-color:var(--done)}
+.prs{display:flex;flex-direction:column;gap:4px}
+.prs div{display:flex;gap:8px;align-items:center}
+.log{height:320px}
+.log .t{color:var(--muted)}
+.empty{color:var(--muted);padding:40px;text-align:center}
+.opt{display:block;width:100%;text-align:left;margin:6px 0}
+.note{font-size:11.5px;color:var(--muted);margin-top:6px}
+
+.toast{position:fixed;right:14px;top:54px;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--need);border-radius:10px;padding:9px 13px;box-shadow:0 8px 24px rgba(0,0,0,.15);max-width:320px;transform:translateX(120%);transition:transform .3s;z-index:20}
+.toast.show{transform:none}
+.toast b{display:block;margin-bottom:2px}
+
+.mnav{display:none}
+.back{display:none;border:0;background:none;color:var(--accent);padding:0;margin-bottom:4px}
+@media (max-width: 900px){
+  .hide-m{display:none}
+  .app{display:block;height:calc(100% - 44px - 58px)}
+  .col{display:none;height:100%;border-right:0}
+  .col.mshow{display:flex}
+  .mnav{display:flex;position:fixed;bottom:0;left:0;right:0;height:58px;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  .mnav button{flex:1;border:0;background:none;font-size:12px;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;position:relative}
+  .mnav button.on{color:var(--accent);font-weight:600}
+  .mnav .ic{font-size:18px;line-height:1}
+  .mnav .nb{position:absolute;top:6px;left:calc(50% + 8px);background:var(--need);color:#fff;border-radius:10px;font-size:10px;padding:0 5px}
+  .tests{grid-template-columns:1fr}
+  .msg{max-width:94%}
+  .back{display:inline-block}
+}
+.cmt{border:1px solid var(--line);border-radius:8px;margin-bottom:8px;overflow:hidden;background:var(--panel)}
+.cmt.off{opacity:.45}
+.cmt-h{display:flex;gap:8px;align-items:center;padding:6px 10px;background:var(--panel2);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.cmt-code{border:0;border-radius:0;border-bottom:1px solid var(--line);margin:0}
+.cmt-b{padding:8px 10px}
+.btn.sm{padding:1px 8px;font-size:12px}
+.slk-to{font-size:12px;color:var(--muted);margin:4px 0 6px}
+.slk{display:flex;gap:10px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
+.av{width:30px;height:30px;border-radius:6px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700;flex:none}
+.av.g{background:var(--todo)}
+.slk-t{font-size:11px;color:var(--muted)}
+.slk-b{margin-top:2px;white-space:pre-wrap}
+textarea.edit{width:100%;min-height:90px;margin-top:4px;border:1px solid var(--accent);border-radius:8px;padding:8px;background:var(--bg);color:var(--text);font:inherit;resize:vertical}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo"><span class="dot">O</span>Oscar <span class="mocktag">mock</span></div>
+  <div class="health">
+    <span class="pill"><span class="led"></span>Mac online</span>
+    <span class="pill hide-m">workers 3/4 · test boxes 1/5</span><span class="pill" id="outbox"></span>
+    <button class="iconbtn" id="themeBtn" title="Toggle theme">◐</button>
+  </div>
+</header>
+
+<main class="app">
+  <section class="col" id="colBoard">
+    <div class="colhead"><h2>Board</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">today</span></div>
+    <div class="filters" id="filters"></div>
+    <div class="scroll" id="board"></div>
+  </section>
+
+  <section class="col mshow" id="colChat">
+    <div class="colhead"><h2>Manager</h2><span class="badge b-done" style="margin-left:auto">ready</span></div>
+    <div class="scroll"><div class="msgs" id="msgs"></div></div>
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Task, paste from Slack, or &quot;status&quot;"></textarea>
+      <button class="btn pri" id="send">Send</button>
+    </div>
+  </section>
+
+  <section class="col" id="colDetail">
+    <div class="colhead"><h2>Task detail</h2></div>
+    <div class="scroll" id="detail"><div class="empty">Pick a task on the board</div></div>
+  </section>
+</main>
+
+<nav class="mnav">
+  <button data-col="colBoard"><span class="ic">▦</span>Board<span class="nb" id="nbNeed"></span></button>
+  <button data-col="colChat" class="on"><span class="ic">💬</span>Manager</button>
+  <button data-col="colDetail"><span class="ic">◧</span>Detail</button>
+</nav>
+
+<div class="toast" id="toast"><b id="toastT"></b><span id="toastB"></span></div>
+
+<script>
+/* Each task type has its own flow (contract). */
+const TYPES = {
+  bugfix:  {steps:["Understand","Failing test","Fix","Tests pass","Reviewer","Draft PR"], tabs:["summary","diff","tests","review","log"]},
+  feature: {steps:["Understand","Plan","Code + tests","Tests pass","Reviewer","Draft PR"], tabs:["summary","diff","tests","review","log"]},
+  debug:   {steps:["Understand","Gather evidence","Hypothesis","Prove","Reviewer","Report"], tabs:["summary","evidence","review","log"]},
+  review:  {pending:true, steps:["Understand","Read diff + context","Run tests","Findings","Reviewer","You approve","Post comments"], tabs:["summary","findings","comments","log"]},
+  slack:   {steps:["Understand","Read thread","Gather facts","Draft reply","You approve","Post"], tabs:["summary","thread","draft","log"]},
+  ops:     {steps:["Understand","Check state","Action plan","You approve","Run","Verify","Report"], tabs:["summary","plan","result","log"]},
+};
+const GROUPS = [
+  {key:"need",label:"Needs you"},{key:"review",label:"In review"},{key:"run",label:"Running"},
+  {key:"todo",label:"Queued"},{key:"done",label:"Done today"},
+];
+const tasks = [
+  {id:"Item-9", type:"slack", title:"Reply in #support: why API is slow at 14:00", status:"need", step:4,
+   repos:["slack #support"], where:"Mac", started:"10:40", source:"Slack thread #support", sub:"Draft reply ready",
+   question:"Post this reply in the #support thread?",
+   progress:["Read the thread (4 messages).","Facts taken from Item-4 evidence: CloudWatch + access logs.","Draft in Indonesian, kept short: 2 sentences."],
+   outbox:{channel:"#support", thread:"“API lambat tiap siang…”", as:"you (your own Slack account)", broadcast:false, edited:false,
+     text:"Sudah dicek: lambat jam 14:00 karena frontend polling room_list tiap 30 detik, ditambah job rekap harian di jam yang sama. Fix sedang dikerjakan, nanti aku update di sini setelah deploy."}},
+  {id:"Item-8", type:"review", typePending:true, title:"Review PR #2031 · bot handler retry", status:"need", step:-1,
+   repos:["chat-backend"], where:"Mac", started:"10:31", source:"chat",
+   sub:"New task type proposed", question:"Approve new task type “review”?"},
+  {id:"Item-5", type:"ops", title:"Clear app secret cache after secret key change", status:"need", step:3,
+   repos:["cache (prod)"], where:"Mac", started:"10:20", source:"Slack thread #support",
+   sub:"Plan ready, waiting for you", question:"Approve DEL of 1 key on prod Valkey?",
+   plan:`# current state
+GET app:<app_code>   → still the old secret (checked 10:21)
+
+# action (1 command, prod)
+DEL app:<app_code>
+
+# verify
+GET app:<app_code>   → empty, then filled with the new secret
+POST /api/v1/... with the new secret → 200`},
+  {id:"Item-2", type:"bugfix", title:"Slack List #45 · Handover invite token can be forged", status:"need", step:2,
+   repos:["chat-backend"], branch:"fix/handover-token-secret", where:"Mac", started:"09:14", source:"Slack thread #backend",
+   sub:"Stopped at Fix", question:"Use a new handover-only secret, or the existing app secret?",
+   options:["New handover-only secret (recommended)","Use the existing app secret"]},
+  {id:"Item-3", type:"feature", title:"Drop sender email from PN for all apps", status:"review", step:4, round:"2/3",
+   repos:["api-server","web-sdk"], branch:"feat/pn-omit-email-all", where:"test box", started:"08:40",
+   sub:"Reviewer round 2/3"},
+  {id:"Item-4", type:"debug", title:"Why is the primary DB slow every day at 14:00?", status:"run", step:3,
+   repos:["api-server","web-frontend"], where:"Mac", started:"10:02",
+   sub:"Proving the hypothesis · no code change"},
+  {id:"Item-6", type:"bugfix", title:"Slack List #47 · Request logger must not log the full URL", status:"run", step:1,
+   repos:["upload-service"], branch:"fix/logger-url", where:"test box", started:"10:05", sub:"Writing failing test"},
+  {id:"Item-7", type:"ops", title:"Add webhook for a staging app", status:"todo", step:-1, repos:["api-server staging"], sub:"Waiting for a slot"},
+  {id:"Item-1", type:"bugfix", title:"push-service PR #102 · Remove dead PN tokens", status:"done", step:99, pr:["push-service #102"],
+   repos:["push-service"], branch:"fix/dead-token-cleanup", where:"test box", started:"07:50", sub:"Draft PR · reviewer PASS"},
+];
+let selected=null, tab="summary", filter="all";
+const collapsed={done:true,todo:true};
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const label=k=>GROUPS.find(g=>g.key===k).label;
+const short=r=>r;
+const repoTags=t=>t.repos.map(r=>`<span class="repo">${esc(short(r))}</span>`).join("");
+
+function renderFilters(){
+  const fs=["all",...Object.keys(TYPES).filter(k=>!TYPES[k].pending)];
+  $("#filters").innerHTML=fs.map(f=>`<button class="chip ${filter===f?"on":""}" data-f="${f}">${f}</button>`).join("");
+  document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{filter=c.dataset.f;renderFilters();renderBoard();});
+}
+function renderBoard(){
+  $("#board").innerHTML=GROUPS.map(g=>{
+    const list=tasks.filter(t=>t.status===g.key&&(filter==="all"||t.type===filter));
+    if(!list.length) return "";
+    const c=collapsed[g.key];
+    return `<div class="group"><div class="ghead" data-g="${g.key}"><span class="badge b-${g.key}">${g.label}</span><span class="count">${list.length}</span><span class="chev">${c?"▸":"▾"}</span></div>
+      ${c?"":list.map(t=>`<div class="card s-${t.status} ${selected===t.id?"sel":""}" data-id="${t.id}" title="${esc(t.title)}">
+        <div class="row1"><span class="tid">${t.id}</span><span class="title">${esc(t.title)}</span>${t.status==="run"?'<span class="spin"></span>':""}</div>
+        <div class="sub"><span class="type">${t.type}${t.typePending?" · new":""}</span>${repoTags(t)}<span>${esc(t.sub)}</span></div>
+        ${t.question?`<div class="q">❓ ${esc(t.question)}</div>`:""}
+      </div>`).join("")}</div>`;
+  }).join("");
+  document.querySelectorAll(".card").forEach(c=>c.onclick=()=>select(c.dataset.id));
+  document.querySelectorAll(".ghead").forEach(h=>h.onclick=()=>{collapsed[h.dataset.g]=!collapsed[h.dataset.g];renderBoard();});
+  const ob=tasks.filter(t=>t.status==="need"&&(t.type==="slack"||(t.type==="review"&&t.comments))).length;
+  $("#outbox").innerHTML=ob?`<span class="badge b-need">outbox ${ob}</span>`:"";
+  const n=tasks.filter(t=>t.status==="need").length;
+  $("#nbNeed").textContent=n||""; $("#nbNeed").style.display=n?"":"none";
+}
+
+function stepsHtml(t){
+  return `<div class="steps">${TYPES[t.type].steps.map((s,i)=>{
+    const cls=i<t.step?"ok":i===t.step?(t.status==="need"?"wait":"now"):"";
+    const mark=cls==="ok"?"✓":cls==="wait"?"!":i+1;
+    return `<div class="step ${cls}"><div class="ball">${mark}</div>${s}</div>`;
+  }).join("")}</div>`;
+}
+
+const DIFF={
+  "Item-2":`<span class="h">chat-backend · lib/app/handover/invite.ex</span><span class="d">-  token = :crypto.hash(:sha256, room_id <> app_code)</span><span class="a">+  token = :crypto.mac(:hmac, :sha256, secret, room_id <> app_code)</span><span class="h">chat-backend · test/app/handover/invite_test.exs</span><span class="a">+  test "token from another app is rejected" do</span>`,
+  "Item-3":`<span class="h">api-server · pn/payload.go</span><span class="d">-  "email": sender.Email,</span><span class="a">+  // email is no longer sent in the PN payload</span><span class="h">web-sdk · src/push.js</span><span class="d">-  const sender = data.email</span><span class="a">+  const sender = data.user_id</span>`,
+};
+const PROGRESS={
+  "Item-5":["Checked: <span class='mono'>app:&lt;code&gt;</span> still holds the old secret.","Action plan: 1 DEL command + verification."],
+  "Item-2":["E2E test written: token from another app → <b>fails</b> (bug proven).","Fix needs a secret, 2 options → asking you."],
+  "Item-3":["api-server: email removed from the PN payload.","web-sdk: read sender from user_id, not email.","Reviewer round 1 found 1 issue, now fixed."],
+  "Item-4":["Pattern: DB load rises at 14:00 ± 10 min, 5 days in a row.","Hypothesis: frontend room_list polling + a daily summary cron.","Proving it with access logs and CloudWatch."],
+  "Item-6":["Writing test: log must not contain the query string."],
+  "Item-1":["Failing test → fix → tests pass. Reviewer PASS in round 1."],
+};
+
+function decideOnly(t){ const save=tab; tab="summary"; const h=paneHtml(t).split('<div class="box"><h4>Progress')[0]; tab=save; return h; }
+function slackPreview(t){
+  const o=t.outbox, editing=t.editing==="slack";
+  return `<div class="slk-to">To <b>${o.channel}</b> · thread ${esc(o.thread)} · as <b>${o.as}</b></div>
+    <div class="slk"><div class="av">Me</div><div style="flex:1;min-width:0"><div><b>You</b> <span class="slk-t">${t.posted?"10:52":"preview"}</span>${o.edited?' <span class="slk-t">(edited by you)</span>':""}</div>
+      ${editing?`<textarea class="edit" id="slkText">${esc(o.text)}</textarea>
+        <div class="actions"><button class="btn pri sm" data-slack-save>Save</button><button class="btn sm" data-slack-cancel>Cancel</button><span class="note" id="slkCount" style="margin:0 0 0 auto">${o.text.length} chars</span></div>`
+      :`<div class="slk-b">${esc(o.text)}</div>`}</div></div>
+    ${t.posted?"":`<label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${o.broadcast?"checked":""} data-bcast> Also send to ${o.channel} (off = reply stays in the thread)</label>`}`;
+}
+function paneHtml(t){
+  const decide = t.status!=="need" ? "" : t.typePending
+    ? `<div class="box need"><h4>❓ ${esc(t.question)}</h4>No existing type fits this task, so the Manager proposes a new one.
+        <pre style="margin-top:8px">type: review
+steps:   Understand → Read diff + context → Run tests
+         → Findings → Reviewer → You approve → Post comments
+checker: Reviewer drops findings that are false
+         or cannot be shown with a failing scenario
+output:  findings + draft PR comments
+gates:   posting comments waits for you
+         (global gate, always on)
+file:    ~/dev/oscar/types/review.md</pre>
+        <div class="actions"><button class="btn pri" data-approve-type>Approve type</button><button class="btn">Change…</button></div>
+        <div class="note">You approve a type once. Later review tasks reuse it without asking.</div></div>`
+    : t.type==="slack"
+    ? `<div class="box need"><h4>❓ ${esc(t.question)}</h4>
+        ${slackPreview(t)}
+        ${t.editing==="slack"?"":`<div class="actions"><button class="btn pri" data-post-slack>Post reply</button><button class="btn" data-slack-edit>Edit</button><button class="btn" data-discard>Discard</button></div>`}
+        <div class="note">Posts as you. Nothing is sent until you press Post.</div></div>`
+    : t.type==="review"
+    ? `<div class="box need"><h4>❓ ${esc(t.question)}</h4>${t.comments.filter(c=>c.on).length} comments: ${t.comments.filter(c=>c.on&&c.where).length} inline on code lines + ${t.comments.filter(c=>c.on&&!c.where).length} general on the PR.
+        <div class="actions"><button class="btn pri" data-approve-post>Post ${t.comments.filter(c=>c.on).length} comments</button><button class="btn" data-goto-comments>Review the text</button></div>
+        <div class="note">Nothing is posted to Bitbucket without your approval. Oscar never approves or merges.</div></div>`
+    : (t.type==="ops"
+    ? `<div class="box need"><h4>❓ ${esc(t.question)}</h4>See the <b>Plan</b> tab for the exact commands.
+        <div class="actions"><button class="btn pri" data-approve>Approve & run</button><button class="btn">Change plan…</button></div>
+        <div class="note">Ops actions never run without your approval.</div></div>`
+    : `<div class="box need"><h4>❓ ${esc(t.question)}</h4>${t.options.map((o,i)=>`<button class="btn opt ${i===0?"pri":""}" data-ans="${i}">${esc(o)}</button>`).join("")}</div>`);
+  const prs = t.pr ? `<div class="box"><h4>✅ Ready for you <span class="badge b-done">reviewer PASS</span></h4>
+      <div class="prs">${t.pr.map(p=>`<div><span class="repo">${p.split(" ")[0]}</span><button class="btn pri">Open draft PR ${p.split(" ")[1]}</button></div>`).join("")}</div>
+      <div class="actions"><button class="btn">Request changes…</button></div></div>` : "";
+
+  if(tab==="summary"){
+    const prog=t.progress||PROGRESS[t.id]||["Not started yet."];
+    return decide+prs+`<div class="box"><h4>Progress</h4><ul>${prog.map(p=>`<li>${p}</li>`).join("")}</ul></div>`;
+  }
+  if(tab==="diff") return `<div class="box"><h4>Changes · ${t.repos.length} repo${t.repos.length>1?"s":""}</h4><pre class="diff">${DIFF[t.id]||"No changes yet."}</pre></div>`;
+  if(tab==="tests") return `<div class="tests">
+      <div class="box"><h4>Before fix <span class="badge b-bad">FAIL</span></h4><pre>1 test, 1 failure</pre></div>
+      <div class="box"><h4>After fix <span class="badge ${t.status==="done"?"b-done":"b-todo"}">${t.status==="done"?"PASS":"pending"}</span></h4><pre>${t.status==="done"?"184 tests, 0 failures":"Waiting for fix…"}</pre></div></div>`;
+  if(tab==="review") return `<div class="box"><h4>Reviewer</h4>
+      ${t.type==="debug"?`<div class="find ok"><b>Will check:</b> does the evidence really support the conclusion, or is it just a timing coincidence?</div>`:
+      `<div class="find"><b>Round 1 · FAIL</b> — web-sdk still reads <span class="mono">data.email</span> in legacy notifications.</div>
+      <div class="find ok"><b>Round 2 · checking</b> — worker added a test for legacy notifications.</div>`}</div>`;
+  if(tab==="evidence") return `<div class="box"><h4>Evidence so far</h4><ul>
+      <li>CloudWatch DBLoad on primary DB: peak 13:58–14:12, 5 days.</li>
+      <li>Access logs: room_list up 3× at the same time.</li>
+      <li>Not proven yet: whether the summary cron adds to it.</li></ul></div>
+      <div class="box"><h4>Conclusion</h4>None yet. Written after the hypothesis is proven and checked by the reviewer.</div>`;
+  if(tab==="plan") return `<div class="box"><h4>Action plan</h4><pre>${esc(t.plan||"-")}</pre><div class="note">This is exactly what will run. Nothing else.</div></div>`;
+  if(tab==="result") return `<div class="box"><h4>Result</h4>${t.ran?`<pre>DEL app:&lt;app_code&gt;   → (integer) 1
+GET app:&lt;app_code&gt;   → new secret ✓
+POST /api/v1/... → 200 ✓</pre>`:'<span style="color:var(--muted)">Not run yet.</span>'}</div>`;
+  if(tab==="thread") return `<div class="box"><h4>Thread in #support</h4>
+      <div class="slk"><div class="av g">S</div><div><b>Support agent</b> <span class="slk-t">09:12</span><div class="slk-b">API lambat tiap siang, ada customer app yang komplain sekitar jam 2. Ada info?</div></div></div>
+      <div class="slk"><div class="av g">P</div><div><b>PM</b> <span class="slk-t">09:20</span><div class="slk-b">+1, sudah 3 hari berturut-turut.</div></div></div>
+      <div class="slk"><div class="av g">S</div><div><b>Support agent</b> <span class="slk-t">10:05</span><div class="slk-b">Ada update? 🙏</div></div></div></div>
+      <div class="note">Only read. Oscar never reacts or replies without your approval.</div>`;
+  if(tab==="draft") return t.status==="need" ? decideOnly(t) : `<div class="box"><h4>${t.posted?'Posted <span class="badge b-done">sent</span>':"Draft"}</h4>${slackPreview(t)}</div>`;
+  if(tab==="findings") return t.step<3 ? `<div class="box" style="color:var(--muted)">Still reading the diff…</div>` : `<div class="box"><h4>Findings · PR #2031</h4>
+      <div class="find"><b>High</b> · <span class="mono">lib/app/bot/retry.ex:42</span> — retry has no max count. If the bot URL always returns 500, the job retries forever and fills the queue.
+        <div class="note">Reviewer: kept — reproduced with a test that returns 500.</div></div>
+      <div class="find"><b>Medium</b> · <span class="mono">lib/app/bot/retry.ex:58</span> — backoff uses <span class="mono">:timer.sleep</span> inside the worker, so one slow bot blocks other rooms.
+        <div class="note">Reviewer: kept — shown in the code path, no test needed.</div></div>
+      <div class="find ok" style="opacity:.7"><b>Dropped</b> · "missing index on bot_logs" — index already exists (migration 20260914).
+        <div class="note">Reviewer: dropped — false finding.</div></div></div>
+      <div class="box"><h4>Tests</h4>PR branch checked out in its own worktree · 412 tests, 0 failures · plus 1 new test for the retry loop: <span class="badge b-bad">FAIL</span> (proves the High finding).</div>`;
+  if(tab==="comments"){
+    if(t.step<3) return `<div class="box" style="color:var(--muted)">No draft comments yet.</div>`;
+    const top = t.status==="need" ? decide : "";
+    const C=t.comments, n=C.filter(c=>c.on).length;
+    return top+`<div class="box"><h4>${t.posted?`Posted to PR #2031 <span class="badge b-done">${n} posted</span>`:`Will post to PR #2031 <span class="badge b-need">${n} of ${C.length} selected</span>`}</h4>
+      <div class="note" style="margin:0 0 8px">Each card below is one comment, exactly as it will appear on Bitbucket. ${t.posted?"":"Untick a card to skip it."}</div>
+      ${C.map((c,i)=>`<div class="cmt ${c.on?"":"off"}">
+        <div class="cmt-h">${t.posted?"":`<input type="checkbox" data-c="${i}" ${c.on?"checked":""}>`}<b>${i+1}.</b>
+          <span class="badge ${c.where?"b-run":"b-review"}">${c.where?"inline":"general"}</span>
+          <span class="mono">${c.where||"on the PR itself"}</span>
+          ${c.edited?'<span class="slk-t">edited by you</span>':""}
+          ${t.posted||t.editing===i?"":`<button class="btn sm" style="margin-left:auto" data-edit="${i}">Edit</button>`}</div>
+        ${c.code?`<pre class="cmt-code">${esc(c.code)}</pre>`:""}
+        ${t.editing===i?`<div class="cmt-b"><textarea class="edit" id="cmtText">${esc(c.text.replace(/<[^>]+>/g,""))}</textarea>
+          <div class="actions"><button class="btn pri sm" data-save="${i}">Save</button><button class="btn sm" data-cancel>Cancel</button></div></div>`
+          :`<div class="cmt-b">${c.text}</div>`}</div>`).join("")}</div>`;
+  }
+  if(tab==="log") return `<div class="box"><h4>Live worker log <span class="spin"></span></h4><pre class="log" id="logbox"></pre></div>`;
+}
+
+function renderDetail(){
+  const t=tasks.find(x=>x.id===selected);
+  if(!t){$("#detail").innerHTML='<div class="empty">Pick a task on the board</div>';return;}
+  const tabs=TYPES[t.type].tabs; if(!tabs.includes(tab)) tab="summary";
+  $("#detail").innerHTML=`
+    <div class="dhead"><button class="back" onclick="showCol('colBoard')">← Board</button>
+      <div class="row1"><span class="tid">${t.id}</span><span class="type">${t.type}</span><span class="badge b-${t.status}">${label(t.status)}</span>${t.round?`<span class="badge b-review">round ${t.round}</span>`:""}</div>
+      <h3>${esc(t.title)}</h3>
+      <div class="meta">${repoTags(t)}${t.branch?`<span class="mono">${t.branch}</span>`:""}<span>${t.where||"-"} · ${t.started||"-"}</span>${t.source?`<span>from ${t.source}</span>`:""}</div></div>
+    ${t.step>=0?stepsHtml(t):""}
+    <div class="tabs">${tabs.map(k=>`<button class="tab ${tab===k?"on":""}" data-tab="${k}">${k[0].toUpperCase()+k.slice(1)}</button>`).join("")}</div>
+    <div class="pane">${paneHtml(t)}</div>`;
+  document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderDetail();});
+  document.querySelectorAll("[data-ans]").forEach(b=>b.onclick=()=>answer(t,+b.dataset.ans));
+  const ap=document.querySelector("[data-approve]"); if(ap) ap.onclick=()=>approve(t);
+  const at=document.querySelector("[data-approve-type]"); if(at) at.onclick=()=>approveType(t);
+  const pp=document.querySelector("[data-approve-post]"); if(pp) pp.onclick=()=>approvePost(t);
+  const on=(sel,fn)=>document.querySelectorAll(sel).forEach(el=>el.onclick=e=>fn(el,e));
+  on("[data-edit]",el=>{t.editing=+el.dataset.edit;renderDetail();const x=$("#cmtText");x&&x.focus();});
+  on("[data-save]",el=>{const c=t.comments[+el.dataset.save];c.text=esc($("#cmtText").value);c.edited=true;delete t.editing;renderDetail();});
+  on("[data-cancel]",()=>{delete t.editing;renderDetail();});
+  on("[data-slack-edit]",()=>{t.editing="slack";renderDetail();const x=$("#slkText");x&&x.focus();});
+  on("[data-slack-save]",()=>{t.outbox.text=$("#slkText").value;t.outbox.edited=true;delete t.editing;renderDetail();});
+  on("[data-slack-cancel]",()=>{delete t.editing;renderDetail();});
+  on("[data-post-slack]",()=>postSlack(t));
+  on("[data-discard]",()=>{addMsg("me",`${t.id}: discard`);Object.assign(t,{status:"done",step:99,sub:"Discarded, nothing sent"});delete t.question;renderBoard();renderDetail();});
+  const bc=document.querySelector("[data-bcast]"); if(bc) bc.onchange=()=>{t.outbox.broadcast=bc.checked;};
+  const st=$("#slkText"); if(st) st.oninput=()=>{$("#slkCount").textContent=st.value.length+" chars";};
+  const gc=document.querySelector("[data-goto-comments]"); if(gc) gc.onclick=()=>{tab="comments";renderDetail();};
+  document.querySelectorAll("[data-c]").forEach(cb=>cb.onchange=()=>{t.comments[+cb.dataset.c].on=cb.checked;
+    t.question=`Post ${t.comments.filter(c=>c.on).length} comments on PR #2031?`;renderBoard();renderDetail();});
+  if(tab==="log") startLog(t);
+}
+function select(id){selected=id;tab="summary";renderBoard();renderDetail();if(isMobile())showCol("colDetail");}
+
+function answer(t,i){
+  addMsg("me",`${t.id}: ${esc(t.options[i].split(" (")[0])}`);
+  Object.assign(t,{status:"run",step:2,sub:"Continuing the fix"}); delete t.question;
+  renderBoard();renderDetail(); setTimeout(()=>addMsg("bot",`OK, ${t.id} continues.`),500);
+}
+function approve(t){
+  addMsg("me",`${t.id}: approved, run it`);
+  Object.assign(t,{status:"run",step:4,sub:"Running the action"}); delete t.question;
+  renderBoard();renderDetail();
+  setTimeout(()=>{Object.assign(t,{status:"done",step:99,ran:true,sub:"Done · verified"});tab="result";renderBoard();renderDetail();
+    addMsg("bot",`${t.id} done. Cache cleared, new secret is read, API returns 200.`);},1800);
+}
+
+function postSlack(t){
+  addMsg("me",`${t.id}: post it`);
+  Object.assign(t,{status:"done",step:99,posted:true,sub:"Reply posted in thread"}); delete t.question;
+  t.progress=[...t.progress,"Posted in the #support thread as you"+(t.outbox.edited?" (your edited text).":".")];
+  tab="draft";renderBoard();renderDetail(); setTimeout(()=>addMsg("bot",`${t.id} done. Reply posted in #support.`),400);
+}
+function approveType(t){
+  addMsg("me",`approve type “review”`);
+  TYPES.review.pending=false; delete t.typePending; delete t.question;
+  Object.assign(t,{status:"run",step:1,sub:"Reading diff + context",progress:["PR #2031 checked out in its own worktree.","Reading the diff and the code around it."]});
+  renderFilters();renderBoard();renderDetail();
+  setTimeout(()=>addMsg("bot",`Saved as <span class="mono">types/review.md</span>. Item-8 started.`),400);
+  setTimeout(()=>{Object.assign(t,{step:3,sub:"Writing findings",progress:["412 tests pass on the PR branch.","New test for the retry loop fails → proves a High issue.","3 findings drafted, sent to Reviewer."]});if(selected===t.id)renderDetail();renderBoard();},2200);
+  t.comments=[
+    {on:true, where:"lib/app/bot/retry.ex:42", code:"42  def handle_retry(job), do: enqueue(job, attempt: job.attempt + 1)",
+     text:"There is no upper limit on retries. When the bot URL keeps returning 500 the job never stops. Could we cap it (e.g. 5) and log the final failure?"},
+    {on:true, where:"lib/app/bot/retry.ex:58", code:"58  :timer.sleep(backoff_ms(job.attempt))",
+     text:"<span class='mono'>:timer.sleep</span> here blocks the worker for other rooms. Maybe schedule the retry with a delay instead of sleeping?"},
+    {on:true, where:null, text:"Thanks! 2 issues found, 1 high: the retry loop has no cap (I added a test that shows it). All 412 existing tests pass. Details in the inline comments."},
+  ];
+  setTimeout(()=>{Object.assign(t,{status:"need",step:5,sub:"3 comments ready",question:"Post 3 comments on PR #2031?",
+    progress:["Reviewer kept 2 findings, dropped 1 false one.","3 draft comments ready: 2 inline + 1 general."]});renderBoard();if(selected===t.id){renderDetail();}
+    toast("Oscar · Item-8 needs you","Post 3 comments on PR #2031?");},4500);
+}
+function approvePost(t){
+  addMsg("me",`${t.id}: approved, post them`);
+  const n=t.comments.filter(c=>c.on).length; t.comments=t.comments.filter(c=>c.on);
+  Object.assign(t,{status:"done",step:99,posted:true,sub:`${n} comments posted`}); delete t.question;
+  t.progress=["Reviewer kept 2 findings, dropped 1 false one.",`${n} comments posted on PR #2031. PR not approved — that stays with the team.`];
+  tab="comments";renderBoard();renderDetail();
+  setTimeout(()=>addMsg("bot",`Item-8 done. ${n} comments posted on PR #2031.`),400);
+}
+function addMsg(who,html){
+  const d=document.createElement("div"); d.className="msg "+(who==="me"?"me":"");
+  d.innerHTML=(who==="me"?"":'<div class="who">Manager</div>')+html;
+  $("#msgs").appendChild(d); d.scrollIntoView({block:"end"});
+}
+function seedChat(){
+  addMsg("me",`please check this<div class="paste">📋 thread #support · "API is slow every afternoon, and app X still uses the old secret after the key change"</div>`);
+  addMsg("bot",`2 separate issues, so 2 tasks:<div class="plan">
+<div class="pi"><span class="tid">Item-4</span><span class="type">debug</span><span class="repo">api-server</span><span class="repo">web-frontend</span><span>Find why it is slow at 14:00</span></div>
+<div class="pi"><span class="tid">Item-5</span><span class="type">ops</span><span class="repo">cache (prod)</span><span>Clear the old secret cache</span></div></div>Item-4 changes no code; the output is a report. For Item-5 I prepare the plan first, you approve it.<div class="actions"><button class="btn pri" disabled>✓ Started</button></div>`);
+  addMsg("me","go");
+  addMsg("bot",`Running. <b>2 need you</b> (Item-5, Item-2) · 1 in review · 2 running · 1 draft PR ready.`);
+  addMsg("bot",`Item-4 has enough evidence to answer the #support thread. Drafted a reply as <b>Item-9</b>, waiting for you.`);
+  addMsg("me","review PR #2031 in chat-backend");
+  addMsg("bot",`No task type fits a PR review yet. I propose a new type <b>review</b>:<div class="plan"><div class="pi">Understand → Read diff + context → Run tests → Findings → Reviewer → You approve → Post comments</div></div>Posting comments waits for you. Approve it on <b>Item-8</b>.`);
+}
+function reply(text){
+  const t=text.trim().toLowerCase(), m=t.match(/item-\d+/);
+  if(t==="status") return addMsg("bot",tasks.map(x=>`${x.id} · ${x.type} · ${label(x.status)}`).join("<br>"));
+  if(m&&tasks.find(x=>x.id.toLowerCase()===m[0])){select("Item-"+m[0].split("-")[1]);return addMsg("bot","Opened on the right.");}
+  const id="Item-"+(Math.max(...tasks.map(x=>+x.id.split("-")[1]))+1);
+  tasks.push({id,type:"debug",title:text.slice(0,60),status:"todo",step:-1,repos:["?"],sub:"New · Manager is reading it"});
+  renderBoard(); addMsg("bot",`Logged as <b>${id}</b>. I'll work out the type and repos first, then send a plan.`);
+}
+$("#send").onclick=()=>{const v=$("#input").value;if(!v.trim())return;addMsg("me",esc(v));$("#input").value="";setTimeout(()=>reply(v),500);};
+$("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("#send").click();}});
+
+let logTimer=null;
+const LOGS={
+  debug:["query CloudWatch DBLoad, last 5 days","  peak 13:58–14:12 every day","loki: count room_list per minute","  14:00 → 3.1× average","check api-server crons: daily_summary at 14:00","EXPLAIN summary query on replica…"],
+  review:["git worktree add ../wt/Item-8 pr/2031","read diff: 4 files, +120 −18","mix test  → 412 tests, 0 failures","write test: bot URL always 500","  1 test, 1 failure  ← retry never stops","send 3 findings to Reviewer"],
+  slack:["read thread #support (4 messages)","link to Item-4 evidence","draft reply (2 sentences)","STOP: waiting for approval to post"],
+  ops:["GET app:<app_code> (read-only)","  still the old secret","build plan: DEL + verify","STOP: waiting for approval"],
+  code:["git worktree add ../wt/<id>","read related code","write e2e test","mix test <file>","  1 test, 1 failure  ← bug proven","STOP: decision needed"],
+};
+function startLog(t){
+  clearInterval(logTimer); let i=0; const box=$("#logbox"), L=LOGS[t.type]||LOGS.code;
+  logTimer=setInterval(()=>{ if(!document.body.contains(box)||i>=L.length) return clearInterval(logTimer);
+    const ts=new Date(Date.now()-(L.length-i)*40000).toTimeString().slice(0,8);
+    box.innerHTML+=`<span class="t">${ts}</span>  ${esc(L[i++])}\n`; box.scrollTop=box.scrollHeight;},350);
+}
+
+function toast(t,b){$("#toastT").textContent=t;$("#toastB").textContent=b;$("#toast").classList.add("show");setTimeout(()=>$("#toast").classList.remove("show"),5000);}
+setTimeout(()=>toast("Oscar · Item-9 needs you","Post reply in #support thread?"),2500);
+
+const isMobile=()=>matchMedia("(max-width:900px)").matches;
+function showCol(id){
+  document.querySelectorAll(".col").forEach(c=>c.classList.toggle("mshow",c.id===id));
+  document.querySelectorAll(".mnav button").forEach(b=>b.classList.toggle("on",b.dataset.col===id));
+}
+document.querySelectorAll(".mnav button").forEach(b=>b.onclick=()=>showCol(b.dataset.col));
+$("#themeBtn").onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme: dark)").matches;r.dataset.theme=dark?"light":"dark";};
+
+renderFilters(); renderBoard(); seedChat(); select("Item-9"); if(isMobile()) showCol("colChat");
+</script>
+</body>
+</html>

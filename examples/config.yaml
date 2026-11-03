@@ -1,0 +1,32 @@
+# Copy to ~/.oscar/config.yaml and adjust. Paths may start with ~.
+listen: 127.0.0.1:7777
+
+# Sessions start here, so they load this folder's CLAUDE.md, memory and skills.
+claude_cwd: ~/dev/work
+# Git repos live directly under this folder (one sub-folder per repo).
+repos_dir: ~/dev/work
+# Task worktrees (default ~/.oscar/work).
+# workspace_dir: ~/.oscar/work
+
+# "auto" lets Claude Code's own classifier approve safe actions. Oscar's gates still apply.
+permission_mode: auto
+max_workers: 4
+max_review_rounds: 3
+
+captain:  {model: opus}
+worker:   {model: opus}
+reviewer: {model: opus}
+
+# Team rules added to every prompt (language for replies, conventions, which branch to use...).
+# A line "forbidden_in_pr: word1, word2" blocks those words in draft PR text.
+rules_file: ~/.oscar/rules.md
+
+# Integrations are local executables. Each gets a JSON object on stdin.
+integrations:
+  draft_pr:   ["~/.oscar/bin/github-draft-pr.sh"]   # {repo, repo_path, worktree, branch, base, title, description} -> {"url": ...}
+  pr_comment: ["~/.oscar/bin/github-pr-comment.sh"] # {repo, repo_path, pr, path, line, text}
+  slack_post: ["~/.oscar/bin/slack-post.sh"]        # {channel, thread, text}
+  # notify:   ["~/.oscar/bin/notify.sh"]            # {title, body}; default: macOS notification
+
+# Extra env for every Claude session, e.g. to let your own hooks know they run under Oscar.
+session_env: ["OSCAR_SESSION=1"]

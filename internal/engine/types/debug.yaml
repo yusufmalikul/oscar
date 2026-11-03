@@ -1,0 +1,16 @@
+name: debug
+description: Find out why something happens. No code change. The output is a short report with evidence.
+code: false
+reviewer: true
+output: report
+steps: [Understand, Gather evidence, Hypothesis, Prove, Reviewer, Report]
+guide: |
+  1. Restate the question in one line.
+  2. Gather evidence (logs, metrics, queries, code). Read-only.
+  3. Form a hypothesis. Then try to prove it wrong. Compare with a normal period; normalise by traffic.
+  4. Write the report: conclusion first, then each claim with the evidence that shows it
+     (query, link, numbers and how they were measured). Say what is still unproven.
+  5. submit_for_review with the report. If a follow-up is needed (fix, reply), say so in the report.
+review_focus: |
+  Does each piece of evidence really show the claim it is used for? Open links, rerun queries.
+  Could it be a coincidence of timing or traffic? Is anything stated as fact without proof?

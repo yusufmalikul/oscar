@@ -1,0 +1,14 @@
+name: ops
+description: An operational change (cache, config, env, data). Plan first, the user approves, then run and verify.
+code: false
+reviewer: true
+output: report
+steps: [Understand, Check state, Action plan, You approve, Run, Verify, Report]
+guide: |
+  1. Check the current state (read-only). Check the change is still needed; someone may have done it already.
+  2. Write the exact plan: every command that changes something, in order, plus how you verify and how to roll back.
+  3. Call request_approval with the plan and the exact commands. Stop and wait.
+  4. After approval, run exactly those commands. Nothing else that changes state.
+  5. Verify and record the output. submit_for_review with before/after.
+review_focus: |
+  Was exactly the approved plan run? Does the verification really show the new state?

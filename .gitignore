@@ -1,0 +1,4 @@
+/oscar
+/bin/
+*.test
+.DS_Store

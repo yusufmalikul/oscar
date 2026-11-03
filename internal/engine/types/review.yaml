@@ -1,0 +1,15 @@
+name: review
+description: Review someone's pull request. Output is findings and draft comments; posting waits for the user.
+code: true
+reviewer: true
+output: outbox
+steps: [Understand, Read diff + context, Run tests, Findings, Reviewer, You approve, Post comments]
+guide: |
+  1. Check out the PR branch in your worktree (git fetch origin <branch> && git switch -c review origin/<branch>).
+  2. Read the diff and the code around it. Run the tests.
+  3. For each problem: severity, file:line, and a concrete failure scenario. Prove high-severity ones with a test if you can.
+  4. Draft comments with the outbox tool (kind pr_comment; inline with path+line, or general). Short and polite.
+  5. submit_for_review. The reviewer drops false findings. Never approve or merge a PR.
+review_focus: |
+  Drop findings that are false or cannot be shown with a concrete scenario. Check severity.
+  Is each draft comment correct, short and polite?

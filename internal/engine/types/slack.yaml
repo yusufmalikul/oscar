@@ -1,0 +1,13 @@
+name: slack
+description: Draft a reply to a Slack thread. The user edits and approves before it is posted.
+code: false
+reviewer: false
+output: outbox
+steps: [Understand, Read thread, Gather facts, Draft reply, You approve, Post]
+guide: |
+  1. Read the whole thread.
+  2. Gather the facts the reply needs. Use other tasks' reports when they exist.
+  3. Draft the reply with the outbox tool (kind slack, channel id and thread ts from the link).
+     Short: one or two sentences unless more is truly needed. Write in the reply language from the rules.
+  4. Call finish. The user approves, edits or discards the draft; Oscar posts it.
+review_focus: ""
