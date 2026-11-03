@@ -226,6 +226,11 @@ func (e *Engine) onMessage(sp sessionSpec, m claude.Message) {
 			e.rememberSession(sp, m.SessionID)
 		}
 	case "result":
+		if msg.NumTurn == 0 && !msg.IsError {
+			// A resumed session first reports the end of the turn that was cut off before the
+			// restart. Nothing ran in it; the real turn for our message follows.
+			return
+		}
 		if sp.taskID != "" {
 			e.logLine(sp.taskID, who, "result", fmt.Sprintf("turn ended (%d turns, $%.2f)%s", msg.NumTurn, msg.Cost, map[bool]string{true: " with error: " + truncate(msg.Result, 300), false: ""}[msg.IsError]))
 		}
