@@ -2,3 +2,6 @@
 /bin/
 *.test
 .DS_Store
+/oscar.next
+/oscar.prev
+/oscar.new

@@ -140,7 +140,7 @@ func (e *Engine) startWorker(taskID, msg string) error {
 	scratch := e.scratch(t, "worker")
 	var repoRoots []string
 	for _, r := range t.Repos {
-		repoRoots = append(repoRoots, filepath.Join(e.cfg.ReposDir, r))
+		repoRoots = append(repoRoots, e.cfg.RepoPath(r))
 	}
 	prompt := e.renderPrompt("worker.md", map[string]any{
 		"Task": t, "Type": ty, "Scratch": scratch, "ReposDir": e.cfg.ReposDir, "Rules": e.cfg.Rules(),
@@ -335,7 +335,7 @@ func (e *Engine) workerTools(taskID string) []claude.Tool {
 				return "Submitted. End your turn now; you will get the verdict as a message.", nil
 			})},
 		{Name: "open_draft_pr", Description: "After the review passed: Oscar pushes your branch and opens a draft PR. Returns the URL.",
-			Schema: obj(map[string]any{"repo": str, "title": str, "description": str}, "repo", "title", "description"),
+			Schema:  obj(map[string]any{"repo": str, "title": str, "description": str}, "repo", "title", "description"),
 			Handler: func(ctx context.Context, raw json.RawMessage) (string, error) { return e.openDraftPR(ctx, taskID, raw) }},
 		{Name: "finish", Description: "Finish the task with a short summary for the user and any lessons worth remembering.",
 			Schema: obj(map[string]any{"summary": str, "learnings": str}, "summary"),
@@ -428,12 +428,19 @@ func (e *Engine) openDraftPR(ctx context.Context, taskID string, raw json.RawMes
 	if out, _ := output(ctx, wt.Path, nil, "git", "status", "--porcelain"); strings.TrimSpace(out) != "" {
 		return "", errors.New("the worktree has uncommitted changes; commit them first")
 	}
+	if e.cfg.IsPublic(a.Repo) {
+		diff, _ := output(ctx, wt.Path, nil, "git", "diff", wt.Base+"...HEAD")
+		log, _ := output(ctx, wt.Path, nil, "git", "log", "--format=%an %ae%n%B", wt.Base+"..HEAD")
+		if hit := findForbidden(e.cfg.ForbiddenWords, map[string]string{"PR title/description": a.Title + "\n" + a.Description, "diff": diff, "commit messages/authors": log}); hit != "" {
+			return "", fmt.Errorf("%s is a public repo and %s. Remove it (rewrite the commits if needed) and call again", a.Repo, hit)
+		}
+	}
 	e.logLine(taskID, "oscar", "info", "pushing "+wt.Branch)
 	if err := runCmd(ctx, wt.Path, nil, "git", "push", "-u", "origin", wt.Branch); err != nil {
 		return "", err
 	}
-	res, err := runIntegration(ctx, e.cfg.Integrations.DraftPR, map[string]any{
-		"repo": a.Repo, "repo_path": filepath.Join(e.cfg.ReposDir, a.Repo), "worktree": wt.Path,
+	res, err := runIntegration(ctx, e.cfg.Integration(a.Repo, "draft_pr"), map[string]any{
+		"repo": a.Repo, "repo_path": e.cfg.RepoPath(a.Repo), "worktree": wt.Path,
 		"branch": wt.Branch, "base": strings.TrimPrefix(wt.Base, "origin/"), "title": a.Title, "description": a.Description,
 	})
 	if err != nil {
@@ -461,6 +468,20 @@ func forbiddenWord(rules, text string) string {
 			w = strings.TrimSpace(strings.ToLower(w))
 			if w != "" && strings.Contains(low, w) {
 				return w
+			}
+		}
+	}
+	return ""
+}
+
+// findForbidden returns a description of the first forbidden word found in any part, or "".
+func findForbidden(words []string, parts map[string]string) string {
+	for name, text := range parts {
+		low := strings.ToLower(text)
+		for _, w := range words {
+			w = strings.TrimSpace(strings.ToLower(w))
+			if w != "" && strings.Contains(low, w) {
+				return fmt.Sprintf("the %s contains %q, which must not appear in a public repo", name, w)
 			}
 		}
 	}

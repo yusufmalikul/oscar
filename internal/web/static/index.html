@@ -182,6 +182,7 @@ input.txt{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;
     <span class="pill" id="hCaptain"></span>
     <span class="pill hide-m" id="hWorkers"></span>
     <span class="pill" id="hOutbox"></span>
+    <span class="pill hide-m" id="hVersion"></span>
     <button class="iconbtn" id="notifBtn" title="Browser notifications">🔔</button>
     <button class="iconbtn" id="themeBtn" title="Toggle theme">◐</button>
   </div>
@@ -269,6 +270,9 @@ function renderHealth(){
   const ob=S.tasks.reduce((n,t)=>n+(t.pending||[]).filter(p=>p.kind==="outbox").length,0);
   $("#hOutbox").innerHTML=ob?`<span class="badge b-need">outbox ${ob}</span>`:"";
   $("#capBadge").innerHTML=h.captain_busy?'<span class="badge b-run">thinking</span>':"";
+  $("#hVersion").innerHTML=h.updating?`<span class="badge b-run">updating: ${esc(h.updating)}</span>`
+    :h.self_repo?`<span class="small mono">${esc(h.version||"")}</span> <button class="btn sm" id="updBtn" title="Pull ${esc(h.self_repo)} main, test, build and restart">Update</button>`:"";
+  const ub=$("#updBtn"); if(ub) ub.onclick=()=>{ if(confirm("Pull the latest main of Oscar, run tests, build and restart? Running tasks resume after the restart.")) act(()=>api("/api/self/update",{})); };
   $("#thinking").textContent=h.captain_busy?"Captain is working…":"";
 }
 
@@ -310,9 +314,9 @@ function renderChat(scroll){
   if(scroll||atBottom) box.scrollTop=box.scrollHeight;
   $("#capPend").innerHTML=S.captain_pending.map(p=>`<div class="box need cap-pend"><h4>❓ ${esc(p.question)}</h4>
     ${p.detail?`<pre>${esc(p.detail)}</pre>`:""}
-    <div class="actions"><button class="btn pri" data-cp="${p.id}" data-allow="1">${p.kind==="type"?"Approve type":"Allow"}</button>
-    <button class="btn" data-cp="${p.id}" data-allow="0">${p.kind==="type"?"Reject":"Deny"}</button></div><div class="err" id="err-${p.id}"></div></div>`).join("");
-  document.querySelectorAll("[data-cp]").forEach(b=>b.onclick=()=>act(()=>api("/api/captain/decide",{pending_id:b.dataset.cp,allow:b.dataset.allow==="1"}),"err-"+b.dataset.cp));
+    <div class="actions"><button class="btn pri" data-cp="${p.id}" data-cp-allow="1">${p.kind==="type"?"Approve type":"Allow"}</button>
+    <button class="btn" data-cp="${p.id}" data-cp-allow="0">${p.kind==="type"?"Reject":"Deny"}</button></div><div class="err" id="err-${p.id}"></div></div>`).join("");
+  $("#capPend").querySelectorAll("[data-cp]").forEach(b=>b.onclick=()=>act(()=>api("/api/captain/decide",{pending_id:b.dataset.cp,allow:b.dataset.cpAllow==="1"}),"err-"+b.dataset.cp));
 }
 async function sendChat(){
   const v=$("#input").value.trim(); if(!v) return;
@@ -374,7 +378,9 @@ function pendingHtml(t,p){
 function paneHtml(t){
   if(tab==="summary"){
     const pend=(t.pending||[]).map(p=>pendingHtml(t,p)).join("");
-    const prs=t.prs?.length?`<div class="box"><h4>✅ Draft PRs</h4>${t.prs.map(p=>`<div class="row"><span class="repo">${esc(p.repo)}</span><a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url||p.branch)}</a></div>`).join("")}<div class="note">Merge stays with you.</div></div>`:"";
+    const selfPR=S.health.self_repo&&(t.prs||[]).some(p=>p.repo===S.health.self_repo);
+    const prs=t.prs?.length?`<div class="box"><h4>✅ Draft PRs</h4>${t.prs.map(p=>`<div class="row"><span class="repo">${esc(p.repo)}</span><a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url||p.branch)}</a></div>`).join("")}
+      ${selfPR?`<div class="actions"><button class="btn pri" id="mergeUpd" ${S.health.updating?"disabled":""}>Merge & update Oscar</button></div><div class="note">Merges this PR, then pulls, tests, builds and restarts Oscar. Rolls back if the new version does not start.</div><div class="err" id="err-upd"></div>`:'<div class="note">Merge stays with you.</div>'}</div>`:"";
     const sum=t.summary?`<div class="box"><h4>Summary</h4><div class="slk-b">${md(t.summary)}</div></div>`:"";
     const prog=t.progress?.length?`<div class="box"><h4>Progress</h4><ul>${t.progress.map(p=>`<li>${md(p)}</li>`).join("")}</ul></div>`:"";
     const brief=`<div class="box"><h4>Brief</h4><div class="slk-b">${md(t.brief)}</div></div>`;
@@ -415,7 +421,9 @@ function renderDetail(){
 async function act(fn,errId){ try{ await fn(); }catch(e){ const el=document.getElementById(errId); if(el) el.textContent=e.message; else toast("Error",e.message); } }
 function decide(t,pid,body){ return act(()=>api(`/api/tasks/${t.id}/decide`,{pending_id:pid,...body}),"err-"+pid); }
 function bindDetail(t){
-  const on=(sel,fn)=>document.querySelectorAll(sel).forEach(el=>el.onclick=()=>fn(el));
+  // Only buttons inside the detail panel: the Captain cards have their own handlers.
+  const root=$("#detail");
+  const on=(sel,fn)=>root.querySelectorAll(sel).forEach(el=>el.onclick=()=>fn(el));
   on(".tab",b=>{tab=b.dataset.tab;renderDetail();});
   on("[data-opt]",b=>decide(t,b.dataset.opt,{option:b.dataset.v}));
   on("[data-ans]",b=>decide(t,b.dataset.ans,{text:$("#ans-"+b.dataset.ans).value}));
@@ -431,6 +439,7 @@ function bindDetail(t){
   on("[data-cancel-task]",()=>{ if(confirm(`Cancel ${t.id}? Worktrees are kept.`)) act(()=>api(`/api/tasks/${t.id}/cancel`,{})); });
   const mb=$("#msgwBtn"); if(mb) mb.onclick=()=>act(async()=>{await api(`/api/tasks/${t.id}/message`,{text:$("#msgw").value});$("#msgw").value="";},"err-msgw");
   const rd=$("#reDiff"); if(rd) rd.onclick=()=>{delete diffs[t.id];renderDetail();};
+  const mu=$("#mergeUpd"); if(mu) mu.onclick=()=>{ if(confirm(`Merge the ${t.id} PR into Oscar and restart with it?`)) act(()=>api("/api/self/update",{task_id:t.id}),"err-upd"); };
 }
 
 /* ---------- misc ---------- */

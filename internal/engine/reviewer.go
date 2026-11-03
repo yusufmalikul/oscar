@@ -91,7 +91,7 @@ func (e *Engine) startReviewer(taskID, workerNote string) {
 func (e *Engine) reviewerTools(taskID string, round int) []claude.Tool {
 	finding := obj(map[string]any{
 		"severity": map[string]any{"type": "string", "enum": []string{"high", "medium", "low"}},
-		"where": str, "problem": str, "scenario": str,
+		"where":    str, "problem": str, "scenario": str,
 	}, "severity", "where", "problem", "scenario")
 	return []claude.Tool{{
 		Name:        "verdict",

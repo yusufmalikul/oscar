@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -175,8 +174,8 @@ func (e *Engine) post(o store.OutboxItem) (string, error) {
 	case "slack":
 		res, err = runIntegration(e.ctx, e.cfg.Integrations.SlackPost, map[string]any{"channel": o.Channel, "thread": o.Thread, "text": o.Text})
 	case "pr_comment":
-		res, err = runIntegration(e.ctx, e.cfg.Integrations.PRComment, map[string]any{
-			"repo": o.Repo, "repo_path": filepath.Join(e.cfg.ReposDir, o.Repo), "pr": o.PR, "path": o.Path, "line": o.Line, "text": o.Text})
+		res, err = runIntegration(e.ctx, e.cfg.Integration(o.Repo, "pr_comment"), map[string]any{
+			"repo": o.Repo, "repo_path": e.cfg.RepoPath(o.Repo), "pr": o.PR, "path": o.Path, "line": o.Line, "text": o.Text})
 	default:
 		return "", fmt.Errorf("unknown outbox kind %s", o.Kind)
 	}

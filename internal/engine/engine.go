@@ -82,16 +82,21 @@ type Engine struct {
 	types     map[string]*TaskType
 	workers   map[string]*claude.Session
 	reviewers map[string]*claude.Session
-	waiting   map[string]bool                 // task id → worker ended its turn on purpose
-	waiters   map[string]chan decision        // pending id → blocked tool call
-	planCmds  map[string][]string             // task id → commands approved in the ops plan
-	finished  map[string]bool                 // task id → worker called finish
-	lastText  map[string]string               // task id → last worker text (for escalations)
-	capPend   []store.Pending                 // gated actions of the Captain
+	waiting   map[string]bool          // task id → worker ended its turn on purpose
+	waiters   map[string]chan decision // pending id → blocked tool call
+	planCmds  map[string][]string      // task id → commands approved in the ops plan
+	finished  map[string]bool          // task id → worker called finish
+	lastText  map[string]string        // task id → last worker text (for escalations)
+	capPend   []store.Pending          // gated actions of the Captain
 	captain   *claude.Session
 	capBusy   bool
 	subs      map[chan Event]struct{}
 	repoNames []string
+	updating  string // current self-update step, "" when idle
+	version   string
+
+	// Restart is set by the server: it shuts down and exits with ExitRestart.
+	Restart func()
 }
 
 func New(ctx context.Context, cfg config.Config) (*Engine, error) {
@@ -109,6 +114,12 @@ func New(ctx context.Context, cfg config.Config) (*Engine, error) {
 		return nil, err
 	}
 	e.repoNames = listRepos(cfg.ReposDir)
+	for name, p := range cfg.ExtraRepos {
+		if _, err := os.Stat(filepath.Join(p, ".git")); err == nil && !contains(e.repoNames, name) {
+			e.repoNames = append(e.repoNames, name)
+		}
+	}
+	sort.Strings(e.repoNames)
 	ts, err := st.LoadTasks()
 	if err != nil {
 		return nil, err
@@ -195,6 +206,8 @@ func (e *Engine) Start() {
 			go e.resumeWorker(t.ID, "Oscar was restarted. Continue the task from where you were. If a command you started was not run, run it again if it is still needed.")
 		}
 	}
+	e.version = e.Version()
+	e.ReportUpdate()
 	go e.schedule()
 	go func() {
 		if err := e.startCaptain(); err != nil {
@@ -254,11 +267,11 @@ func (e *Engine) chat(from, text string) {
 // ---------- snapshot for the UI ----------
 
 type State struct {
-	Tasks      []*store.Task          `json:"tasks"`
-	Types      map[string]*TaskType   `json:"types"`
-	Chat       []store.ChatMessage    `json:"chat"`
-	CapPending []store.Pending        `json:"captain_pending"`
-	Health     map[string]any         `json:"health"`
+	Tasks      []*store.Task        `json:"tasks"`
+	Types      map[string]*TaskType `json:"types"`
+	Chat       []store.ChatMessage  `json:"chat"`
+	CapPending []store.Pending      `json:"captain_pending"`
+	Health     map[string]any       `json:"health"`
 }
 
 func (e *Engine) Snapshot() State {
@@ -278,6 +291,7 @@ func (e *Engine) Snapshot() State {
 		Health: map[string]any{
 			"workers": len(e.workers), "reviewers": len(e.reviewers), "max_workers": e.cfg.MaxWorkers,
 			"captain": e.captain != nil, "captain_busy": e.capBusy,
+			"self_repo": e.cfg.Self.Repo, "updating": e.updating, "version": e.version,
 		}}
 }
 

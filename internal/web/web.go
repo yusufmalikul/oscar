@@ -30,6 +30,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/cancel", s.cancel)
 	mux.HandleFunc("POST /api/tasks/{id}/outbox/{oid}", s.editOutbox)
 	mux.HandleFunc("POST /api/captain/decide", s.decideCaptain)
+	mux.HandleFunc("POST /api/self/update", s.selfUpdate)
 	mux.Handle("GET /", http.FileServerFS(s.static))
 	return sameOrigin(mux)
 }
@@ -186,6 +187,21 @@ func (s *Server) editOutbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.e.EditOutbox(r.PathValue("id"), r.PathValue("oid"), a.Text); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) selfUpdate(w http.ResponseWriter, r *http.Request) {
+	var a struct {
+		TaskID string `json:"task_id"`
+	}
+	if err := read(w, r, &a); err != nil {
+		fail(w, err)
+		return
+	}
+	if err := s.e.SelfUpdate(a.TaskID); err != nil {
 		fail(w, err)
 		return
 	}

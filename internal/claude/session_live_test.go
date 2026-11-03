@@ -26,15 +26,23 @@ func TestLiveToolCall(t *testing.T) {
 		Tools: []Tool{
 			{Name: "ping", Description: "Ping Oscar", Schema: map[string]any{"type": "object", "properties": map[string]any{}},
 				Handler: func(ctx context.Context, a json.RawMessage) (string, error) {
-					mu.Lock(); got = append(got, "ping"); mu.Unlock(); return "pong", nil
+					mu.Lock()
+					got = append(got, "ping")
+					mu.Unlock()
+					return "pong", nil
 				}},
 			{Name: "note", Description: "Leave a note", Schema: map[string]any{"type": "object", "properties": map[string]any{"text": map[string]any{"type": "string"}}, "required": []string{"text"}},
 				Handler: func(ctx context.Context, a json.RawMessage) (string, error) {
-					mu.Lock(); got = append(got, "note:"+string(a)); mu.Unlock(); return "ok", nil
+					mu.Lock()
+					got = append(got, "note:"+string(a))
+					mu.Unlock()
+					return "ok", nil
 				}},
 		},
 		PreToolUse: func(ctx context.Context, in HookInput) HookDecision {
-			mu.Lock(); got = append(got, "hook:"+in.ToolName); mu.Unlock()
+			mu.Lock()
+			got = append(got, "hook:"+in.ToolName)
+			mu.Unlock()
 			if in.ToolName == "Bash" && strings.Contains(string(in.ToolInput), "rm ") {
 				return HookDecision{Decision: "deny", Reason: "no rm"}
 			}
@@ -43,7 +51,10 @@ func TestLiveToolCall(t *testing.T) {
 		CanUseTool: func(ctx context.Context, r PermissionRequest) PermissionResult { return PermissionResult{Allow: true} },
 		OnMessage: func(m Message) {
 			if m.Type == "result" {
-				select { case done <- struct{}{}: default: }
+				select {
+				case done <- struct{}{}:
+				default:
+				}
 			}
 		},
 	})

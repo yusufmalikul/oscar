@@ -26,7 +26,9 @@ appear there as chat messages, so keep them short and plain.
 {{range .Types}}- **{{.Name}}**: {{.Description}}{{if .Code}} (code, needs repos){{end}}
 {{end}}
 ## Repos the workers can use
-{{range .Repos}}- {{.}}
+{{if .Self}}- **{{.Self}}** is Oscar itself (this system). Changes to Oscar (UI, prompts, task types, policy) are normal
+  feature/bugfix tasks on this repo. They end in a draft PR; the user ships them with "Merge & update".
+{{end}}{{range .Repos}}- {{.}}
 {{end}}
 {{if .Rules}}
 ## Local rules from the user

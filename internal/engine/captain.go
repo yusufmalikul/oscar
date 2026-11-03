@@ -30,7 +30,7 @@ func (e *Engine) startCaptain() error {
 		types = append(types, t)
 	}
 	sort.Slice(types, func(i, j int) bool { return types[i].Name < types[j].Name })
-	prompt := e.renderPrompt("captain.md", map[string]any{"Types": types, "Repos": e.repoNames, "Rules": e.cfg.Rules()})
+	prompt := e.renderPrompt("captain.md", map[string]any{"Types": types, "Repos": e.repoNames, "Rules": e.cfg.Rules(), "Self": e.cfg.Self.Repo})
 	e.mu.Unlock()
 
 	sp := sessionSpec{role: policy.Captain, tools: e.captainTools(), prompt: prompt, resume: saved.SessionID, rc: e.cfg.Captain,

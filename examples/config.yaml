@@ -28,5 +28,16 @@ integrations:
   slack_post: ["~/.oscar/bin/slack-post.sh"]        # {channel, thread, text}
   # notify:   ["~/.oscar/bin/notify.sh"]            # {title, body}; default: macOS notification
 
+# Oscar can change itself: put its repo here, use GitHub integrations for it, and mark it public
+# so diffs and PR text are checked for words that must not leak (names, internal hosts...).
+extra_repos: {oscar: ~/src/oscar}
+self: {repo: oscar, branch: main}
+public_repos: [oscar]
+forbidden_words: [my-company, internal.example.com]
+repo_integrations:
+  oscar:
+    draft_pr: ["~/.oscar/bin/github-draft-pr.sh"]
+    merge_pr: ["~/.oscar/bin/github-merge-pr.sh"]
+
 # Extra env for every Claude session, e.g. to let your own hooks know they run under Oscar.
 session_env: ["OSCAR_SESSION=1"]

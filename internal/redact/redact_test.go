@@ -9,10 +9,10 @@ func TestString(t *testing.T) {
 	cases := map[string]string{
 		"token xoxp-1234567890-abcdefghij here":           "xoxp-",
 		"PGPASSWORD=hunter2 psql -h db":                   "hunter2",
-		"postgres://app:s3cr3t@db.internal:5432/app":       "s3cr3t",
-		"-H 'Authorization: Bearer abc.def.ghi123456789'":  "abc.def",
-		`{"api_key": "abcd1234"}`:                          "abcd1234",
-		"key AKIAABCDEFGHIJKLMNOP":                         "AKIAABCDEFGHIJKLMNOP",
+		"postgres://app:s3cr3t@db.internal:5432/app":      "s3cr3t",
+		"-H 'Authorization: Bearer abc.def.ghi123456789'": "abc.def",
+		`{"api_key": "abcd1234"}`:                         "abcd1234",
+		"key AKIAABCDEFGHIJKLMNOP":                        "AKIAABCDEFGHIJKLMNOP",
 	}
 	for in, secret := range cases {
 		out := String(in)

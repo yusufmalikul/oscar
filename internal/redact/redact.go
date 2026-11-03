@@ -4,12 +4,12 @@ package redact
 import "regexp"
 
 var patterns = []*regexp.Regexp{
-	regexp.MustCompile(`xox[abposr]-[A-Za-z0-9-]{10,}`),                        // Slack tokens
-	regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{10,}`),                            // Anthropic keys
-	regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{20,}`),                           // GitHub tokens
-	regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`),                         // GitHub fine-grained tokens
-	regexp.MustCompile(`ATATT[A-Za-z0-9_=-]{20,}`),                             // Atlassian API tokens
-	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),                                     // AWS access key ids
+	regexp.MustCompile(`xox[abposr]-[A-Za-z0-9-]{10,}`),                                 // Slack tokens
+	regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{10,}`),                                     // Anthropic keys
+	regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{20,}`),                                    // GitHub tokens
+	regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`),                                  // GitHub fine-grained tokens
+	regexp.MustCompile(`ATATT[A-Za-z0-9_=-]{20,}`),                                      // Atlassian API tokens
+	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),                                              // AWS access key ids
 	regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`), // JWTs
 	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----`),
 }

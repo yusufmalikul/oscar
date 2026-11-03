@@ -85,9 +85,9 @@ func defaultBase(ctx context.Context, repo string) string {
 func (e *Engine) prepareWorktrees(t *store.Task) ([]store.Worktree, error) {
 	var out []store.Worktree
 	for _, repo := range t.Repos {
-		src := filepath.Join(e.cfg.ReposDir, repo)
+		src := e.cfg.RepoPath(repo)
 		if _, err := os.Stat(filepath.Join(src, ".git")); err != nil {
-			return out, fmt.Errorf("repo %s not found under %s", repo, e.cfg.ReposDir)
+			return out, fmt.Errorf("repo %s not found at %s", repo, src)
 		}
 		// Fetch is best effort: offline work should still start.
 		_ = runCmd(e.ctx, src, nil, "git", "fetch", "--quiet", "origin")
