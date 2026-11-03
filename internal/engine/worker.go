@@ -435,10 +435,17 @@ func (e *Engine) openDraftPR(ctx context.Context, taskID string, raw json.RawMes
 			return "", fmt.Errorf("%s is a public repo and %s. Remove it (rewrite the commits if needed) and call again", a.Repo, hit)
 		}
 	}
-	e.logLine(taskID, "oscar", "info", "pushing "+wt.Branch)
+	e.logLine(taskID, "oscar", "info", "pushing "+wt.Branch+" (the repo's pre-push hook may run tests first)")
+	e.mu.Lock()
+	e.setStep(t, "Draft PR")
+	t.StepNote = "Draft PR: pushing " + wt.Branch + " (pre-push hook may run tests)"
+	e.save(t)
+	e.mu.Unlock()
+	started := time.Now()
 	if err := runCmd(ctx, wt.Path, nil, "git", "push", "-u", "origin", wt.Branch); err != nil {
 		return "", err
 	}
+	e.logLine(taskID, "oscar", "info", fmt.Sprintf("pushed in %s", time.Since(started).Round(time.Second)))
 	if existing != "" {
 		// A reopened task: pushing the same branch updates the PR that is already open.
 		e.logLine(taskID, "oscar", "info", "pushed new commits to the existing PR "+existing)
