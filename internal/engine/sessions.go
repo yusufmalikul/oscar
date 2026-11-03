@@ -96,6 +96,8 @@ func (e *Engine) approveTool(ctx context.Context, sp sessionSpec, req claude.Per
 		return claude.PermissionResult{Allow: true}
 	}
 	detail := toolDetail(req.ToolName, req.Input)
+	// Compute the gate before taking the lock: it reads the always-allow rules, which lock too.
+	pd := policy.Check(sp.pctx, req.ToolName, req.Input)
 	e.mu.Lock()
 	if sp.taskID != "" && req.ToolName == "Bash" {
 		for _, c := range e.planCmds[sp.taskID] {
@@ -110,7 +112,6 @@ func (e *Engine) approveTool(ctx context.Context, sp sessionSpec, req claude.Per
 	if reason == "" {
 		reason = "needs approval"
 	}
-	pd := policy.Check(sp.pctx, req.ToolName, req.Input)
 	p := store.Pending{ID: newID("tool"), Kind: store.PendingTool, Tool: req.ToolName, Input: req.Input,
 		Question: fmt.Sprintf("Allow %s? (%s)", req.ToolName, strings.TrimPrefix(reason, "Oscar gate: ")), Detail: redact.String(detail),
 		RuleKind: pd.Kind, RuleSubject: pd.Subject}
