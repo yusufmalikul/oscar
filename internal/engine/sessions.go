@@ -48,6 +48,7 @@ type sessionSpec struct {
 func (e *Engine) startSession(sp sessionSpec) (*claude.Session, error) {
 	sp.pctx.ServerName = serverName
 	sp.pctx.Allowed = e.allowed
+	sp.pctx.Forwarded = portForwarded
 	opts := claude.Options{
 		Bin:                e.cfg.ClaudeBin,
 		Cwd:                e.cfg.ClaudeCwd,

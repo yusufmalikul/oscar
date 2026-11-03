@@ -28,7 +28,7 @@ func TestGateHasKindAndSubject(t *testing.T) {
 		{`curl -X POST https://api.example.com/v1/x -d '{}'`, "http-write", "api.example.com"},
 		{`ssh -fNL 5448:db.internal:5432 me@jump.example.com && sleep 2`, "remote-shell", "jump.example.com"},
 		{`redis-cli -h cache.example.com DEL app:1`, "redis-write", "cache.example.com"},
-		{`psql postgres://u:p@127.0.0.1:5448/app -c "UPDATE t SET a=1"`, "db-write", "127.0.0.1"},
+		{`psql postgres://u:p@db.example.com:5432/app -c "UPDATE t SET a=1"`, "db-write", "db.example.com"},
 	}
 	for _, c := range cases {
 		d := CheckCommand(w, c.cmd)
@@ -51,5 +51,45 @@ func TestAlwaysAllowRules(t *testing.T) {
 	allowed["deny|"] = true
 	if d := CheckCommand(w, `git push origin HEAD`); d.Action != Deny {
 		t.Errorf("git push: got %v, want deny", d.Action)
+	}
+}
+
+func TestLocalDatabaseWritesAreAllowed(t *testing.T) {
+	w := Context{Role: Worker}
+	for _, cmd := range []string{
+		`psql -h 127.0.0.1 -U postgres -d app_test -c "UPDATE apps SET a=1"`,
+		`psql postgres://postgres:x@localhost:5432/app -c "insert into t values (1)"`,
+		`psql -d app_test -c "delete from t"`,
+		`redis-cli -h 127.0.0.1 DEL app:1`,
+		`redis-cli DEL app:1`,
+	} {
+		if d := CheckCommand(w, cmd); d.Action == Gate {
+			t.Errorf("%q: got gate (%s), want no gate", cmd, d.Reason)
+		}
+	}
+	for _, cmd := range []string{
+		`psql -h db.example.com -c "UPDATE t SET a=1"`,
+		`redis-cli -h cache.example.com DEL app:1`,
+	} {
+		if d := CheckCommand(w, cmd); d.Action != Gate {
+			t.Errorf("%q: got %v, want gate", cmd, d.Action)
+		}
+	}
+}
+
+// A localhost port that is an SSH tunnel or port-forward reaches a remote server and stays gated.
+func TestTunnelledLocalhostStaysGated(t *testing.T) {
+	w := Context{Role: Worker, Forwarded: func(port string) bool { return port == "5443" || port == "8081" }}
+	for _, cmd := range []string{
+		`psql -h 127.0.0.1 -p 5443 -U app -d prod -c "UPDATE t SET a=1"`,
+		`psql postgres://u:p@127.0.0.1:5443/prod -c "delete from t"`,
+		`curl -X POST localhost:8081/api -d '{}'`,
+	} {
+		if d := CheckCommand(w, cmd); d.Action != Gate {
+			t.Errorf("%q: got %v, want gate", cmd, d.Action)
+		}
+	}
+	if d := CheckCommand(w, `psql -h 127.0.0.1 -p 5432 -d app_test -c "UPDATE t SET a=1"`); d.Action == Gate {
+		t.Errorf("plain local db: got gate")
 	}
 }

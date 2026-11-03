@@ -45,6 +45,9 @@ type Context struct {
 	ServerName string   // our in-process MCP server, e.g. "oscar"
 	// Allowed reports whether the user chose "Always allow" for this kind of gate and subject.
 	Allowed func(kind, subject string) bool
+	// Forwarded reports whether a local TCP port is a tunnel to somewhere else (ssh -L,
+	// kubectl port-forward). Such ports are treated as remote.
+	Forwarded func(port string) bool
 }
 
 type Decision struct {
@@ -235,8 +238,17 @@ func CheckCommand(c Context, cmd string) Decision {
 			return Decision{Action: Deny, Reason: rl.reason}
 		}
 		subject := subjectOf(rl.kind, cmd)
-		if rl.kind == "http-write" && subject == "" {
+		if rl.kind == "http-write" && subject == "" && !anyForwarded(c, localHTTPPorts(cmd)) {
 			continue // every URL in the command is on this machine
+		}
+		if rl.kind == "http-write" && subject == "" {
+			subject = "tunnelled localhost"
+		}
+		if (rl.kind == "db-write" || rl.kind == "redis-write") && isLocalHost(subject) {
+			if !anyForwarded(c, []string{dbPort(rl.kind, cmd)}) {
+				continue // a database on this machine
+			}
+			subject = "tunnelled " + subject + ":" + dbPort(rl.kind, cmd)
 		}
 		return gate(c, rl.kind, subject, rl.reason)
 	}
@@ -349,4 +361,43 @@ func subjectOf(kind, cmd string) string {
 		}
 	}
 	return ""
+}
+
+var (
+	reLocalPort = regexp.MustCompile(`(?i)(?:^|[\s'"/@])(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)`)
+	reDashP     = regexp.MustCompile(`\s-p\s*(\d+)`)
+	reDSNPort   = regexp.MustCompile(`(?i)://(?:[^@/\s]*@)?(?:localhost|127\.0\.0\.1|\[::1\]):(\d+)`)
+)
+
+func anyForwarded(c Context, ports []string) bool {
+	if c.Forwarded == nil {
+		return false
+	}
+	for _, p := range ports {
+		if p != "" && c.Forwarded(p) {
+			return true
+		}
+	}
+	return false
+}
+
+func localHTTPPorts(cmd string) []string {
+	var out []string
+	for _, m := range reLocalPort.FindAllStringSubmatch(cmd, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
+func dbPort(kind, cmd string) string {
+	if m := reDSNPort.FindStringSubmatch(cmd); m != nil {
+		return m[1]
+	}
+	if m := reDashP.FindStringSubmatch(cmd); m != nil {
+		return m[1]
+	}
+	if kind == "redis-write" {
+		return "6379"
+	}
+	return "5432"
 }
