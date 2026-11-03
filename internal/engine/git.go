@@ -92,7 +92,7 @@ func (e *Engine) prepareWorktrees(t *store.Task) ([]store.Worktree, error) {
 		// Fetch is best effort: offline work should still start.
 		_ = runCmd(e.ctx, src, nil, "git", "fetch", "--quiet", "origin")
 		base := defaultBase(e.ctx, src)
-		branch := fmt.Sprintf("oscar/%s-%s", strings.ToLower(t.ID), slug(t.Title))
+		branch := e.branchName(src, t)
 		path := filepath.Join(t.Workspace, repo)
 		if _, err := os.Stat(path); err == nil {
 			out = append(out, store.Worktree{Repo: repo, Path: path, Branch: branch, Base: base})
@@ -138,4 +138,24 @@ func worktreeDiff(ctx context.Context, wts []store.Worktree) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// branchName picks a team-style branch name (feature/..., fix/..., chore/...) that does not
+// exist yet in the repo.
+func (e *Engine) branchName(repo string, t *store.Task) string {
+	prefix := map[string]string{"bugfix": "fix/", "feature": "feature/"}[t.Type]
+	if prefix == "" {
+		prefix = "chore/"
+	}
+	base := prefix + slug(t.Title)
+	name := base
+	for i := 2; i < 50; i++ {
+		local := runCmd(e.ctx, repo, nil, "git", "rev-parse", "--verify", "--quiet", "refs/heads/"+name) == nil
+		remote := runCmd(e.ctx, repo, nil, "git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/"+name) == nil
+		if !local && !remote {
+			break
+		}
+		name = fmt.Sprintf("%s-%d", base, i)
+	}
+	return name
 }

@@ -143,6 +143,32 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		go e.logLine(taskID, "oscar", "info", "posted to "+o.Target+" "+res)
 		return nil
 
+	case store.PendingClosePR:
+		var in struct{ Repo, URL, Branch, New string }
+		_ = json.Unmarshal(p.Input, &in)
+		e.removePending(t, p.ID)
+		e.settle(t)
+		e.save(t)
+		e.mu.Unlock()
+		if !d.Allow {
+			e.logLine(taskID, "you", "info", "kept the old PR "+in.URL)
+			return nil
+		}
+		comment := "Superseded: this work moved to branch " + in.New + "."
+		if strings.TrimSpace(d.Text) != "" {
+			comment = strings.TrimSpace(d.Text)
+		}
+		if _, err := runIntegration(e.ctx, e.cfg.Integration(in.Repo, "close_pr"), map[string]any{
+			"repo": in.Repo, "repo_path": e.cfg.RepoPath(in.Repo), "url": in.URL, "comment": comment}); err != nil {
+			return fmt.Errorf("declining %s: %w", in.URL, err)
+		}
+		if err := runCmd(e.ctx, e.cfg.RepoPath(in.Repo), nil, "git", "push", "origin", "--delete", in.Branch); err != nil {
+			e.logLine(taskID, "oscar", "error", "declined "+in.URL+" but could not delete the old branch: "+err.Error())
+			return nil
+		}
+		e.logLine(taskID, "oscar", "info", "declined "+in.URL+" and deleted branch "+in.Branch)
+		return nil
+
 	case store.PendingEscalate:
 		reply := strings.TrimSpace(d.Text)
 		e.removePending(t, p.ID)

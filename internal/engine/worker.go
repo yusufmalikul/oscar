@@ -337,6 +337,11 @@ func (e *Engine) workerTools(taskID string) []claude.Tool {
 		{Name: "open_draft_pr", Description: "After the review passed: Oscar pushes your branch and opens a draft PR. Returns the URL.",
 			Schema:  obj(map[string]any{"repo": str, "title": str, "description": str}, "repo", "title", "description"),
 			Handler: func(ctx context.Context, raw json.RawMessage) (string, error) { return e.openDraftPR(ctx, taskID, raw) }},
+		{Name: "rename_branch", Description: "Rename your branch (e.g. to the team's naming style). Oscar renames it, pushes the new branch and, when a PR is open, opens a new draft PR from it (title/description required then) and asks the user to decline the old PR and delete the old branch.",
+			Schema: obj(map[string]any{"repo": str, "new_name": str, "title": str, "description": str}, "repo", "new_name"),
+			Handler: func(ctx context.Context, raw json.RawMessage) (string, error) {
+				return e.renameBranch(ctx, taskID, raw)
+			}},
 		{Name: "finish", Description: "Finish the task with a short summary for the user and any lessons worth remembering.",
 			Schema: obj(map[string]any{"summary": str, "learnings": str}, "summary"),
 			Handler: h(func(t *store.Task, ty *TaskType, raw json.RawMessage) (string, error) {
@@ -498,4 +503,102 @@ func findForbidden(words []string, parts map[string]string) string {
 		}
 	}
 	return ""
+}
+
+func (e *Engine) renameBranch(ctx context.Context, taskID string, raw json.RawMessage) (string, error) {
+	var a struct{ Repo, NewName, Title, Description string }
+	_ = json.Unmarshal(raw, &a)
+	var ar struct {
+		NewName string `json:"new_name"`
+	}
+	_ = json.Unmarshal(raw, &ar)
+	a.NewName = strings.TrimSpace(ar.NewName)
+	if a.NewName == "" || runCmd(ctx, "", nil, "git", "check-ref-format", "--branch", a.NewName) != nil {
+		return "", fmt.Errorf("%q is not a valid branch name", a.NewName)
+	}
+	e.mu.Lock()
+	t, err := e.task(taskID)
+	if err != nil {
+		e.mu.Unlock()
+		return "", err
+	}
+	idx := -1
+	for i := range t.Worktrees {
+		if t.Worktrees[i].Repo == a.Repo {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		e.mu.Unlock()
+		return "", fmt.Errorf("no worktree for repo %s", a.Repo)
+	}
+	wt := t.Worktrees[idx]
+	var oldPR *store.PR
+	for i := range t.PRs {
+		if t.PRs[i].Repo == a.Repo {
+			p := t.PRs[i]
+			oldPR = &p
+		}
+	}
+	e.mu.Unlock()
+	if wt.Branch == a.NewName {
+		return "The branch already has that name.", nil
+	}
+	if oldPR != nil && (strings.TrimSpace(a.Title) == "" || strings.TrimSpace(a.Description) == "") {
+		return "", errors.New("a PR is open for this branch: pass title and description for the new PR")
+	}
+	if w := forbiddenWord(e.cfg.Rules(), a.NewName+"\n"+a.Title+"\n"+a.Description); w != "" {
+		return "", fmt.Errorf("the new name or PR text mentions %q, which the local rules forbid", w)
+	}
+	if err := runCmd(ctx, wt.Path, nil, "git", "branch", "-m", wt.Branch, a.NewName); err != nil {
+		return "", err
+	}
+	oldBranch := wt.Branch
+	e.mu.Lock()
+	t.Worktrees[idx].Branch = a.NewName
+	e.save(t)
+	e.mu.Unlock()
+	e.logLine(taskID, "oscar", "info", "renamed branch "+oldBranch+" → "+a.NewName)
+	if oldPR == nil {
+		return "Renamed " + oldBranch + " → " + a.NewName + ". It is pushed when you open the draft PR.", nil
+	}
+	// A PR is open on the old branch. Bitbucket and GitHub cannot change a PR's source branch,
+	// so push the new branch, open a new draft PR, and ask the user to close the old one.
+	if !t.ReviewPassed {
+		return "Renamed locally. The open PR still points at " + oldBranch + "; it moves to the new branch when the review passes and you call open_draft_pr.", nil
+	}
+	e.mu.Lock()
+	t.PRs = removePR(t.PRs, a.Repo)
+	e.mu.Unlock()
+	res, err := e.openDraftPR(ctx, taskID, mustRaw(map[string]string{"repo": a.Repo, "title": a.Title, "description": a.Description}))
+	if err != nil {
+		e.mu.Lock()
+		t.PRs = append(t.PRs, *oldPR) // keep tracking the old PR if the new one failed
+		e.save(t)
+		e.mu.Unlock()
+		return "", fmt.Errorf("renamed, but the new PR failed: %w", err)
+	}
+	e.mu.Lock()
+	t.Progress = append(t.Progress, "Moved PR "+oldPR.URL+" to branch "+a.NewName)
+	in, _ := json.Marshal(map[string]string{"repo": a.Repo, "url": oldPR.URL, "branch": oldBranch, "new": a.NewName})
+	e.needsYou(t, store.Pending{Kind: store.PendingClosePR, Input: in,
+		Question: "Decline the old PR " + oldPR.URL + " and delete branch " + oldBranch + "?",
+		Detail:   "The work moved to branch " + a.NewName + ". " + res})
+	e.mu.Unlock()
+	return res + " The user is asked to decline the old PR " + oldPR.URL + " and delete the old branch.", nil
+}
+
+func removePR(prs []store.PR, repo string) []store.PR {
+	out := prs[:0]
+	for _, p := range prs {
+		if p.Repo != repo {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func mustRaw(v any) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
 }

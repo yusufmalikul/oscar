@@ -378,6 +378,9 @@ function pendingHtml(t,p){
     <div class="note">Nothing else that changes state runs without asking.</div>${err}</div>`;}
   if(p.kind==="outbox"){ const o=(t.outbox||[]).find(x=>x.id===p.outbox_id); if(!o) return "";
     return `<div class="box need"><h4>❓ ${esc(p.question)}</h4>${outboxCard(t,o,true,p.id)}<div class="note">Nothing is sent until you press Post.</div>${err}</div>`;}
+  if(p.kind==="close_pr") return `<div class="box need"><h4>❓ ${esc(p.question)}</h4><div class="slk-b">${md(p.detail||"")}</div>
+    <div class="row" style="margin-top:8px"><button class="btn pri" data-allow="${p.id}">Decline old PR & delete branch</button><input class="txt" id="note-${p.id}" placeholder="Comment on the old PR (optional)"><button class="btn" data-deny="${p.id}">Keep it</button></div>
+    <div class="note">Oscar declines the old PR with a short comment and deletes the old remote branch. The new PR stays.</div>${err}</div>`;
   if(p.kind==="escalate") return `<div class="box need"><h4>⚠ Needs your call</h4><div class="slk-b">${md(p.question)}</div>
     <textarea class="edit" id="rep-${p.id}" placeholder="Guidance for the worker"></textarea>
     <div class="actions"><button class="btn pri" data-rep="${p.id}">Send</button>${t.status!=="done"?`<button class="btn" data-retry="${p.id}">Retry review</button>`:""}<button class="btn" data-cancel-task>Cancel task</button></div>${err}</div>`;
@@ -450,7 +453,7 @@ function bindDetail(t){
   on(".tab",b=>{tab=b.dataset.tab;renderDetail();});
   on("[data-opt]",b=>decide(t,b.dataset.opt,{option:b.dataset.v}));
   on("[data-ans]",b=>decide(t,b.dataset.ans,{text:$("#ans-"+b.dataset.ans).value}));
-  on("[data-allow]",b=>decide(t,b.dataset.allow,{allow:true}));
+  on("[data-allow]",b=>decide(t,b.dataset.allow,{allow:true,text:($("#note-"+b.dataset.allow)||{}).value||""}));
   on("[data-always]",b=>decide(t,b.dataset.always,{allow:true,always:true}));
   on("[data-deny]",b=>decide(t,b.dataset.deny,{allow:false,text:($("#note-"+b.dataset.deny)||{}).value||""}));
   on("[data-post]",b=>decide(t,b.dataset.post,{allow:true}));

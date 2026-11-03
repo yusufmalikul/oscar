@@ -40,6 +40,7 @@ const (
 	PendingOutbox   = "outbox"   // message to post (Slack, PR comment)
 	PendingType     = "type"     // new task type proposed by the Captain
 	PendingPlan     = "plan"     // ops plan to approve before running
+	PendingClosePR  = "close_pr" // decline an old PR and delete its branch after a rename
 	PendingEscalate = "escalate" // reviewer failed too many rounds, or the worker stopped
 )
 
