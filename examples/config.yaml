@@ -13,7 +13,8 @@ permission_mode: auto
 max_workers: 4
 max_review_rounds: 3
 
-captain:  {model: opus}
+# effort: low | medium | high | xhigh | max. The Captain may pick another model/effort per task.
+captain:  {model: opus, effort: medium}
 worker:   {model: opus}
 reviewer: {model: opus}
 

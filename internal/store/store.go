@@ -110,17 +110,20 @@ type Worktree struct {
 }
 
 type Task struct {
-	ID       string   `json:"id"`
-	N        int      `json:"n"`
-	Type     string   `json:"type"`
-	Title    string   `json:"title"`
-	Brief    string   `json:"brief"`
-	Source   string   `json:"source,omitempty"`
-	Repos    []string `json:"repos"`
-	Status   string   `json:"status"`
-	Step     int      `json:"step"`
-	StepNote string   `json:"step_note,omitempty"`
-	Round    int      `json:"round"`
+	ID     string   `json:"id"`
+	N      int      `json:"n"`
+	Type   string   `json:"type"`
+	Title  string   `json:"title"`
+	Brief  string   `json:"brief"`
+	Source string   `json:"source,omitempty"`
+	Repos  []string `json:"repos"`
+	// Model and Effort for the worker, chosen by the Captain. Empty means the config default.
+	Model    string `json:"model,omitempty"`
+	Effort   string `json:"effort,omitempty"`
+	Status   string `json:"status"`
+	Step     int    `json:"step"`
+	StepNote string `json:"step_note,omitempty"`
+	Round    int    `json:"round"`
 	// RoundBase is Round when the task was last reopened; the round limit counts from here.
 	RoundBase int    `json:"round_base,omitempty"`
 	Summary   string `json:"summary,omitempty"`

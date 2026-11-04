@@ -41,6 +41,10 @@ func (e *Engine) startReviewer(taskID, workerNote string) {
 	prompt := e.renderPrompt("reviewer.md", map[string]any{"Task": t, "Type": ty, "Scratch": scratch, "Rules": e.cfg.Rules()})
 	brief := t.Brief
 	round := t.Round
+	var repoDirs []string
+	for _, r := range t.Repos {
+		repoDirs = append(repoDirs, e.cfg.RepoPath(r))
+	}
 	e.mu.Unlock()
 
 	var msg strings.Builder
@@ -61,7 +65,7 @@ func (e *Engine) startReviewer(taskID, workerNote string) {
 		roots = append(roots, w.Path)
 	}
 	sp := sessionSpec{role: policy.Reviewer, taskID: taskID, tools: e.reviewerTools(taskID, round), prompt: prompt,
-		rc: e.cfg.Reviewer, addDirs: append([]string{scratch}, roots...),
+		rc: e.cfg.Reviewer, addDirs: append([]string{scratch}, roots...), repoDirs: repoDirs,
 		pctx: policy.Context{Role: policy.Reviewer, WriteRoots: []string{scratch}}}
 	e.logLine(taskID, "oscar", "info", fmt.Sprintf("starting reviewer (round %d)", round))
 	s, err := e.startSession(sp)

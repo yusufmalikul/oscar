@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -43,12 +45,57 @@ type sessionSpec struct {
 	resume  string
 	rc      config.Role
 	addDirs []string
+	// repoDirs are the main checkouts the session works on. Their .claude settings count too.
+	repoDirs []string
+}
+
+// claudeSettings returns the user's Claude Code permission rules for a session, read from
+// the same places the CLI reads (following setting_sources): the user's ~/.claude, the
+// session's start dir, and the repos the session works on.
+func (e *Engine) claudeSettings(repoDirs []string) *policy.Settings {
+	home, _ := os.UserHomeDir()
+	has := func(src string) bool {
+		for _, s := range e.cfg.SettingSources {
+			if s == src {
+				return true
+			}
+		}
+		return false
+	}
+	var paths []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		p = filepath.Clean(p)
+		if !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	if has("user") && home != "" {
+		add(filepath.Join(home, ".claude", "settings.json"))
+		add(filepath.Join(home, ".claude", "settings.local.json"))
+	}
+	for _, d := range append([]string{e.cfg.ClaudeCwd}, repoDirs...) {
+		if d == "" {
+			continue
+		}
+		if has("project") {
+			add(filepath.Join(d, ".claude", "settings.json"))
+		}
+		if has("local") {
+			add(filepath.Join(d, ".claude", "settings.local.json"))
+		}
+	}
+	return policy.NewSettings(paths)
 }
 
 func (e *Engine) startSession(sp sessionSpec) (*claude.Session, error) {
 	sp.pctx.ServerName = serverName
 	sp.pctx.Allowed = e.allowed
 	sp.pctx.Forwarded = portForwarded
+	if sp.pctx.Settings == nil {
+		sp.pctx.Settings = e.claudeSettings(sp.repoDirs)
+	}
 	opts := claude.Options{
 		Bin:                e.cfg.ClaudeBin,
 		Cwd:                e.cfg.ClaudeCwd,

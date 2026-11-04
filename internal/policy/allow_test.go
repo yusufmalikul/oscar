@@ -49,8 +49,8 @@ func TestAlwaysAllowRules(t *testing.T) {
 	}
 	// Deny rules can never be allowed.
 	allowed["deny|"] = true
-	if d := CheckCommand(w, `git push origin HEAD`); d.Action != Deny {
-		t.Errorf("git push: got %v, want deny", d.Action)
+	if d := CheckCommand(w, `~/.scripts/slack-send.sh --channel C1 hi`); d.Action != Deny {
+		t.Errorf("slack send: got %v, want deny", d.Action)
 	}
 }
 

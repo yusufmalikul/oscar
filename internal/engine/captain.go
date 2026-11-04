@@ -105,23 +105,44 @@ func (e *Engine) tellCaptainDone(taskID string) {
 		"If nothing is needed, reply with exactly: NOOP")
 }
 
+// workerModel describes the model and effort a task's worker runs with, e.g. "sonnet/low".
+func (e *Engine) workerModel(t *store.Task) string {
+	m, ef := e.cfg.Worker.Model, e.cfg.Worker.Effort
+	if t.Model != "" {
+		m = t.Model
+	}
+	if t.Effort != "" {
+		ef = t.Effort
+	}
+	if m == "" {
+		m = "default"
+	}
+	if ef == "" {
+		return m
+	}
+	return m + "/" + ef
+}
+
 func (e *Engine) captainTools() []claude.Tool {
 	return []claude.Tool{
-		{Name: "create_task", Description: "Create a task. type must be one of the known types; repos are directory names (needed for code types). Put external ids in the title.",
-			Schema: obj(map[string]any{"type": str, "title": str, "brief": str, "source": str, "repos": strList}, "type", "title", "brief"),
+		{Name: "create_task", Description: "Create a task. type must be one of the known types; repos are directory names (needed for code types). Put external ids in the title. model and effort choose the worker's model; leave them empty for the default.",
+			Schema: obj(map[string]any{"type": str, "title": str, "brief": str, "source": str, "repos": strList,
+				"model":  map[string]any{"type": "string", "description": "Worker model: an alias (opus, sonnet, haiku) or a full id (e.g. claude-opus-5-5). Empty = default."},
+				"effort": map[string]any{"type": "string", "enum": Efforts, "description": "Worker reasoning effort. Empty = default."}},
+				"type", "title", "brief"),
 			Handler: func(_ context.Context, raw json.RawMessage) (string, error) {
 				var a struct {
-					Type, Title, Brief, Source string
-					Repos                      []string
+					Type, Title, Brief, Source, Model, Effort string
+					Repos                                     []string
 				}
 				if err := json.Unmarshal(raw, &a); err != nil {
 					return "", err
 				}
-				t, err := e.CreateTask(a.Type, a.Title, a.Brief, a.Source, a.Repos)
+				t, err := e.CreateTask(a.Type, a.Title, a.Brief, a.Source, a.Repos, a.Model, a.Effort)
 				if err != nil {
 					return "", err
 				}
-				return "Created " + t.ID + ". It starts when a worker slot is free.", nil
+				return "Created " + t.ID + " (worker: " + e.workerModel(t) + "). It starts when a worker slot is free.", nil
 			}},
 		{Name: "propose_type", Description: "Propose a new task type as YAML (fields: name, description, code, reviewer, output [draft_pr|report|outbox], steps, guide, review_focus). The user approves it once in the UI.",
 			Schema: obj(map[string]any{"yaml": str, "why": str}, "yaml", "why"),
@@ -161,7 +182,7 @@ func (e *Engine) captainTools() []claude.Tool {
 				var b strings.Builder
 				for _, id := range ids {
 					t := e.tasks[id]
-					fmt.Fprintf(&b, "%s [%s] %s · %s · step %q\n", t.ID, t.Type, t.Title, t.Status, t.StepNote)
+					fmt.Fprintf(&b, "%s [%s] %s · %s · step %q · worker %s\n", t.ID, t.Type, t.Title, t.Status, t.StepNote, e.workerModel(t))
 				}
 				if b.Len() == 0 {
 					return "No tasks.", nil

@@ -33,11 +33,17 @@ long-running monitor tasks, approval chains, a remote-access setup guide, and we
   (`internal/policy`). The hook can allow the call, deny it with a reason, or send it to
   you for approval. Calls it does not decide go to the CLI permission mode (`auto` by
   default). Whenever the CLI would prompt, the prompt comes to you in the UI.
+- Your own Claude Code permission rules count too. Oscar reads `permissions.allow`, `ask` and
+  `deny` from `~/.claude/settings*.json` and from `.claude/settings*.json` in the start dir and
+  in the task's repos (following `setting_sources`). What you allow in your terminal sessions is
+  allowed for workers; Oscar's own deny rules and the main-checkout gate still come first.
 - Workers report through Oscar's own tools (`report`, `ask`, `submit_for_review`,
   `open_draft_pr`, `outbox`, `finish`). The server checks every step. For example, a draft
   PR needs a PASS from the reviewer, and an ops command runs only after you approve the plan.
-- Workers never push. When the review passes, Oscar pushes the branch and opens a draft PR
-  through an integration script.
+- Workers may push their task branch when you ask. Force push, deleting a remote branch and
+  pushing to main/master wait for your approval. When the review passes, Oscar pushes the
+  branch and opens a draft PR through an integration script.
+- The Captain picks each worker's model and effort (`create_task`), within the defaults you set.
 - State is kept in `~/.oscar` as one folder per task. After a restart, Oscar resumes the
   Claude sessions where they stopped.
 - Secrets are masked in logs, chat and task text.

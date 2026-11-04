@@ -19,7 +19,17 @@ import (
 func timeNow() time.Time { return time.Now() }
 
 // CreateTask adds a task to the queue.
-func (e *Engine) CreateTask(typ, title, brief, source string, repos []string) (*store.Task, error) {
+// Efforts are the reasoning effort levels the claude CLI accepts.
+var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
+
+func (e *Engine) CreateTask(typ, title, brief, source string, repos []string, model, effort string) (*store.Task, error) {
+	model, effort = strings.TrimSpace(model), strings.TrimSpace(effort)
+	if strings.ContainsAny(model, " \t\n") {
+		return nil, fmt.Errorf("model %q is not a model name (use an alias like opus or sonnet, or an id like claude-opus-5-5)", model)
+	}
+	if effort != "" && !contains(Efforts, effort) {
+		return nil, fmt.Errorf("effort %q must be one of %s", effort, strings.Join(Efforts, ", "))
+	}
 	e.mu.Lock()
 	ty := e.types[typ]
 	e.mu.Unlock()
@@ -39,7 +49,7 @@ func (e *Engine) CreateTask(typ, title, brief, source string, repos []string) (*
 		return nil, err
 	}
 	t := &store.Task{ID: id, N: n, Type: typ, Title: redact.String(title), Brief: redact.String(brief),
-		Source: source, Repos: repos, Status: store.StatusQueued, Step: -1, Created: time.Now(),
+		Source: source, Repos: repos, Model: model, Effort: effort, Status: store.StatusQueued, Step: -1, Created: time.Now(),
 		Workspace: filepath.Join(e.cfg.WorkspaceDir, id)}
 	e.mu.Lock()
 	e.tasks[id] = t
@@ -157,8 +167,15 @@ func (e *Engine) startWorker(taskID, msg string) error {
 	}
 	e.mu.Unlock()
 
+	rc := e.cfg.Worker
+	if t.Model != "" {
+		rc.Model = t.Model
+	}
+	if t.Effort != "" {
+		rc.Effort = t.Effort
+	}
 	sp := sessionSpec{role: policy.Worker, taskID: taskID, tools: e.workerTools(taskID), prompt: prompt, resume: resume,
-		rc: e.cfg.Worker, addDirs: []string{t.Workspace, scratch},
+		rc: rc, addDirs: []string{t.Workspace, scratch}, repoDirs: repoRoots,
 		pctx: policy.Context{Role: policy.Worker, WriteRoots: []string{t.Workspace, scratch}, RepoRoots: repoRoots}}
 	e.logLine(taskID, "oscar", "info", map[bool]string{true: "resuming worker", false: "starting worker"}[resume != ""])
 	s, err := e.startSession(sp)

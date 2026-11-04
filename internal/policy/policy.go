@@ -7,6 +7,10 @@
 //	Deny  — never allowed in this role; the message tells Claude what to do instead.
 //	Pass  — no opinion; the CLI's own permission mode decides, and if it would prompt,
 //	        the prompt comes to the user through Oscar.
+//
+// The user's own Claude Code permission rules (Settings) count too: what they allow in their
+// terminal sessions is allowed here, what they ask about is gated, what they deny is denied.
+// Oscar's own deny rules and the main-checkout gate still come first.
 package policy
 
 import (
@@ -48,6 +52,8 @@ type Context struct {
 	// Forwarded reports whether a local TCP port is a tunnel to somewhere else (ssh -L,
 	// kubectl port-forward). Such ports are treated as remote.
 	Forwarded func(port string) bool
+	// Settings are the permission rules from the user's Claude Code settings files. May be nil.
+	Settings *Settings
 }
 
 type Decision struct {
@@ -95,11 +101,22 @@ func Check(c Context, tool string, input json.RawMessage) Decision {
 	if msg, ok := blockedTools[tool]; ok {
 		return Decision{Action: Deny, Reason: msg}
 	}
+	if tool != "Bash" {
+		if d, ok := settingsTool(c, tool, input); ok {
+			return d
+		}
+	}
 	if readOnlyTools[tool] {
 		return Decision{Action: Allow, Reason: "read-only tool"}
 	}
 	if editTools[tool] {
-		return checkEdit(c, input)
+		d := checkEdit(c, input)
+		if d.Action == Gate {
+			if rule := settingsAllowsTool(c, tool, input); rule != "" {
+				return Decision{Action: Allow, Reason: "allowed in your Claude Code settings: " + rule}
+			}
+		}
+		return d
 	}
 	if tool == "Bash" {
 		var in struct {
@@ -113,7 +130,13 @@ func Check(c Context, tool string, input json.RawMessage) Decision {
 		if mcpReadVerb.MatchString(name) {
 			return Decision{Action: Allow, Reason: "read-only MCP tool"}
 		}
+		if rule := settingsAllowsTool(c, tool, input); rule != "" {
+			return Decision{Action: Allow, Reason: "allowed in your Claude Code settings: " + rule}
+		}
 		return gate(c, "mcp-write", tool, "MCP tool that may change something outside: "+tool)
+	}
+	if rule := settingsAllowsTool(c, tool, input); rule != "" {
+		return Decision{Action: Allow, Reason: "allowed in your Claude Code settings: " + rule}
 	}
 	return Decision{Action: Pass, Reason: ""}
 }
@@ -182,9 +205,10 @@ func g(kind, expr, reason string) rule {
 
 // hardRules apply to every role. First match wins, so order matters: deny before gate.
 var hardRules = []rule{
-	r(`\bgit\s+push\b`, Deny, "Workers never push. Oscar pushes the branch itself when it opens the draft PR (oscar open_draft_pr)."),
 	r(`(?i)slack-send|chat\.postMessage|hooks\.slack\.com|chat\.update`, Deny, "Do not post to Slack yourself. Put the message in the outbox with the oscar outbox tool; the user approves it and Oscar posts it."),
 	r(`\brm\s+(-\w*[rf]\w*\s+)+\s*(/|~|\$HOME)(\s|$)`, Deny, "Refusing to delete a whole home or root directory."),
+	g("force-push", `\bgit\s+push\b[^|;&]*(\s(-f|--force|--force-with-lease|--force-if-includes|--mirror|--delete|-d|--prune)\b|\s\+\S|\s:\S)`, "rewrites or deletes a remote branch"),
+	g("push-main", pushMainExpr, "pushes to the main branch"),
 	g("github-write", `\bgh\s+(pr|issue|release|repo)\s+(create|merge|close|edit|comment|review|delete|ready)\b`, "changes something on GitHub"),
 	g("github-write", `\bgh\s+api\b.*(-X|--method)\s*(POST|PUT|PATCH|DELETE)`, "writes through the GitHub API"),
 	g("k8s-write", `(?i)\b(kubectl|oc)\s+(apply|create|delete|edit|patch|replace|scale|rollout|exec|cp|drain|cordon|uncordon|set|label|annotate|taint)\b`, "changes a Kubernetes cluster"),
@@ -201,13 +225,18 @@ var hardRules = []rule{
 	g("secret-read", `/\.claude/secrets/|\bsecurity\s+find-(generic|internet)-password\b|(^|\s)(cat|less|more|head|tail|grep)\s+[^|;&]*\.env(\.\w+)?(\s|$)`, "reads a secret"),
 }
 
+// A push whose refspec names main or master, e.g. "git push origin main" or "HEAD:main".
+const pushMainExpr = `\bgit\s+push\b[^|;&]*\s(?:\S*:)?(?:refs/heads/)?(main|master)(\s|$)`
+
+var rePushMain = regexp.MustCompile(pushMainExpr)
+
 var reviewerRules = []rule{
 	r(`\bgit\s+(commit|push|reset|checkout|switch|rebase|merge|stash|cherry-pick|revert|clean|am|apply)\b`, Deny, "The reviewer does not change the branch. Report what is wrong with the verdict tool."),
 }
 
 // safe commands: auto-allow when every part of the command line is one of these.
 var safePrefix = regexp.MustCompile(`^(ls|pwd|cat|head|tail|wc|grep|rg|ag|find|fd|tree|file|stat|du|df|which|type|echo|printf|true|false|date|sort|uniq|cut|tr|diff|cmp|jq|yq|basename|dirname|realpath|readlink|env|printenv|test|\[|sed\s+-n|awk|column|nl|tee\s+/dev/null|xargs\s+(grep|cat|wc|ls)|cd|sleep|` +
-	`git\s+(status|log|diff|show|branch|rev-parse|ls-files|ls-tree|blame|fetch|remote\s+-v|config\s+--get|add|commit|restore|switch\s+-c|checkout\s+-b|stash|worktree\s+list|merge-base|describe|shortlog|grep|cat-file|for-each-ref|symbolic-ref)|` +
+	`git\s+(status|log|diff|show|branch|rev-parse|ls-files|ls-tree|blame|fetch|remote\s+-v|config\s+--get|add|commit|push|restore|switch\s+-c|checkout\s+-b|stash|worktree\s+list|merge-base|describe|shortlog|grep|cat-file|for-each-ref|symbolic-ref)|` +
 	`go\s+(test|build|vet|run|mod|list|env|version|fmt|doc|generate)|gofmt|golangci-lint|staticcheck|` +
 	`mix\s+(test|compile|format\s+--check-formatted|deps\.get|credo|dialyzer|hex\.outdated)|elixir\s+--version|` +
 	`npm\s+(test|run|ci|ls|outdated)|npx\s+(tsc|eslint|prettier|vitest|jest)|yarn\s+(test|lint|build)|pnpm\s+(test|lint|build)|` +
@@ -231,11 +260,27 @@ func CheckCommand(c Context, cmd string) Decision {
 		}
 	}
 	for _, rl := range hardRules {
-		if !rl.re.MatchString(cmd) {
-			continue
-		}
-		if rl.action == Deny {
+		if rl.action == Deny && rl.re.MatchString(cmd) {
 			return Decision{Action: Deny, Reason: rl.reason}
+		}
+	}
+	parts := commandParts(cmd)
+	if c.Settings != nil {
+		if d, ok := settingsCommand(c, parts); ok {
+			return d
+		}
+	}
+	if d, ok := checkMainCheckout(c, cmd); ok {
+		return d
+	}
+	if c.Settings != nil {
+		if rule := settingsAllowsCommand(c, parts); rule != "" {
+			return Decision{Action: Allow, Reason: "allowed in your Claude Code settings: " + rule}
+		}
+	}
+	for _, rl := range hardRules {
+		if rl.action == Deny || !rl.re.MatchString(cmd) {
+			continue
 		}
 		subject := subjectOf(rl.kind, cmd)
 		if rl.kind == "http-write" && subject == "" && !anyForwarded(c, localHTTPPorts(cmd)) {
@@ -252,18 +297,7 @@ func CheckCommand(c Context, cmd string) Decision {
 		}
 		return gate(c, rl.kind, subject, rl.reason)
 	}
-	if d, ok := checkMainCheckout(c, cmd); ok {
-		return d
-	}
-	for _, part := range splitter.Split(cmd, -1) {
-		part = strings.TrimSpace(strings.TrimLeft(part, "( "))
-		if part == "" {
-			continue
-		}
-		// env assignments like FOO=1 go test
-		for strings.Contains(strings.SplitN(part, " ", 2)[0], "=") && strings.Contains(part, " ") {
-			part = strings.TrimSpace(strings.SplitN(part, " ", 2)[1])
-		}
+	for _, part := range parts {
 		if !safePrefix.MatchString(part) {
 			return Decision{Action: Pass, Reason: ""}
 		}
@@ -271,7 +305,23 @@ func CheckCommand(c Context, cmd string) Decision {
 	return Decision{Action: Allow, Reason: "safe command"}
 }
 
-var mutatingGit = regexp.MustCompile(`\bgit\s+(-C\s+(\S+)\s+)?(commit|checkout|switch|reset|merge|rebase|stash|clean|branch\s+-[dDmM]|worktree\s+remove|pull|cherry-pick|revert|am|apply|restore)\b`)
+// commandParts splits a command line at &&, ||, ;, | and newlines, and drops a leading
+// "(" and env assignments like FOO=1, so each part starts with the program name.
+func commandParts(cmd string) []string {
+	var out []string
+	for _, part := range splitter.Split(cmd, -1) {
+		part = strings.TrimSpace(strings.TrimLeft(part, "( "))
+		for strings.Contains(strings.SplitN(part, " ", 2)[0], "=") && strings.Contains(part, " ") {
+			part = strings.TrimSpace(strings.SplitN(part, " ", 2)[1])
+		}
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+var mutatingGit = regexp.MustCompile(`\bgit\s+(-C\s+(\S+)\s+)?(commit|checkout|switch|reset|merge|rebase|stash|clean|branch\s+-[dDmM]|worktree\s+remove|pull|push|cherry-pick|revert|am|apply|restore)\b`)
 
 // checkMainCheckout gates mutating git commands aimed at a main checkout instead of a worktree.
 func checkMainCheckout(c Context, cmd string) (Decision, bool) {
@@ -360,6 +410,10 @@ func subjectOf(kind, cmd string) string {
 			return m[1]
 		}
 		return "localhost"
+	case "push-main":
+		if m := rePushMain.FindStringSubmatch(cmd); m != nil {
+			return m[1]
+		}
 	case "aws-write":
 		if m := reAwsService.FindStringSubmatch(cmd); m != nil {
 			return m[1]
