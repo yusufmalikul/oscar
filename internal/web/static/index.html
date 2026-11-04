@@ -64,6 +64,9 @@ body.resizing{cursor:col-resize;user-select:none}
 .group{padding:6px 10px 0}
 .ghead{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:2px 2px 6px;cursor:pointer;user-select:none}
 .ghead .chev{margin-left:auto;font-size:13px;color:var(--muted)}
+.ghead .gclear{margin-left:auto;text-transform:none;letter-spacing:0}
+.ghead .gclear+.chev{margin-left:0}
+.btn.danger{color:var(--need)}
 .count{background:var(--panel2);border-radius:20px;padding:0 7px;color:var(--muted)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:7px 10px;margin-bottom:6px;box-shadow:var(--shadow);cursor:pointer;border-left:3px solid var(--c,var(--line))}
 .card:hover{border-color:var(--accent)}
@@ -246,6 +249,7 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const md=s=>esc(s).replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>").replace(/\n/g,"<br>");
 const grp=k=>GROUPS.find(g=>g.key===k)||GROUPS[0];
 const task=id=>S.tasks.find(t=>t.id===id);
+const FINISHED=["done","cancelled","failed"]; // these tasks can be deleted
 
 async function api(path,body){
   const r=await fetch(path,body===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -263,6 +267,7 @@ async function load(){
   S.tasks=S.tasks||[]; S.chat=S.chat||[];
   if(!chatFrom&&S.chat.length) chatFrom=S.chat[0].seq; // keep this start, so the list only grows S.captain_pending=S.captain_pending||[]; S.types=S.types||{}; S.health=S.health||{};
   const need=S.tasks.filter(t=>t.status==="needs_you").length+S.captain_pending.length;
+  if(selected&&selected!=="rules"&&!task(selected)) forget(selected);
   if(need>prevNeed) notifyBrowser("Oscar needs you",(S.tasks.find(t=>t.status==="needs_you")?.pending?.[0]?.question)||"A decision is waiting");
   render();
 }
@@ -308,7 +313,7 @@ function renderBoard(){
     const list=S.tasks.filter(t=>t.status===g.key&&(filter==="all"||t.type===filter)).sort((a,b)=>b.n-a.n);
     if(!list.length) return "";
     const c=collapsed[g.key];
-    return `<div class="group"><div class="ghead" data-g="${g.key}"><span class="badge b-${g.cls}">${g.label}</span><span class="count">${list.length}</span><span class="chev">${c?"▸":"▾"}</span></div>
+    return `<div class="group"><div class="ghead" data-g="${g.key}"><span class="badge b-${g.cls}">${g.label}</span><span class="count">${list.length}</span>${g.key==="done"&&!c?`<button class="btn sm gclear" id="clearDone" title="Delete these done tasks with their worktrees and folders">Clear</button>`:""}<span class="chev">${c?"▸":"▾"}</span></div>
       ${c?"":list.map(t=>`<div class="card s-${g.cls} ${selected===t.id?"sel":""}" data-id="${t.id}" title="${esc(t.title)}">
         <div class="row1"><span class="tid">${t.id}</span><span class="title">${esc(t.title)}</span>${t.status==="running"||t.status==="review"?'<span class="spin"></span>':""}</div>
         <div class="sub"><span class="type">${esc(t.type)}</span>${(t.repos||[]).map(r=>`<span class="repo">${esc(r)}</span>`).join("")}<span>${esc(cardSub(t))}</span></div>
@@ -317,6 +322,7 @@ function renderBoard(){
   }).join("")||'<div class="empty">No tasks yet. Tell the Captain what to do.</div>';
   document.querySelectorAll(".card").forEach(c=>c.onclick=()=>select(c.dataset.id));
   document.querySelectorAll(".ghead").forEach(h=>h.onclick=()=>{collapsed[h.dataset.g]=!collapsed[h.dataset.g];try{localStorage.setItem("oscar.collapsed",JSON.stringify(collapsed))}catch{};renderBoard();});
+  const cd=$("#clearDone"); if(cd) cd.onclick=ev=>{ ev.stopPropagation(); clearDone(); };
   const n=S.tasks.filter(t=>t.status==="needs_you").length+S.captain_pending.length;
   $("#nbNeed").textContent=n||""; $("#nbNeed").style.display=n?"":"none";
 }
@@ -458,7 +464,7 @@ function renderDetail(){
   const tabs=tabsFor(t); if(!tabs.includes(tab)) tab="summary";
   const g=grp(t.status);
   $("#detail").innerHTML=`<div class="dhead"><button class="back" onclick="showCol('colBoard')">← Board</button>
-    <div class="row1"><span class="tid">${t.id}</span><span class="type">${esc(t.type)}</span><span class="badge b-${g.cls}">${g.label}</span>${t.round?`<span class="badge b-review">round ${t.round}</span>`:""}</div>
+    <div class="row1"><span class="tid">${t.id}</span><span class="type">${esc(t.type)}</span><span class="badge b-${g.cls}">${g.label}</span>${t.round?`<span class="badge b-review">round ${t.round}</span>`:""}${FINISHED.includes(t.status)?`<button class="btn sm danger" style="margin-left:auto" id="delTask" title="Remove this task, its worktrees and its folders. Branches and PRs stay.">Delete</button>`:""}</div>
     <h3>${esc(t.title)}</h3>
     <div class="meta">${(t.repos||[]).map(r=>`<span class="repo">${esc(r)}</span>`).join("")}${(t.worktrees||[]).map(w=>`<span class="mono">${esc(w.branch)}</span>`).join("")}${t.source?`<span>from ${esc(t.source)}</span>`:""}<span>${new Date(t.created).toLocaleString()}</span>${["running","review"].includes(t.status)?`<span id="lastAct" data-at="${esc(lastAt(t))}"></span>`:""}</div></div>
     ${stepsHtml(t)}
@@ -490,7 +496,28 @@ function bindDetail(t){
   const mb=$("#msgwBtn"); if(mb) mb.onclick=()=>act(async()=>{await api(`/api/tasks/${t.id}/message`,{text:$("#msgw").value});$("#msgw").value="";},"err-msgw");
   const rd=$("#reDiff"); if(rd) rd.onclick=()=>{delete diffs[t.id];renderDetail();};
   const rb=$("#reopenBtn"); if(rb) rb.onclick=()=>act(()=>api(`/api/tasks/${t.id}/reopen`,{text:$("#reopenTxt").value}),"err-reopen");
+  const dt=$("#delTask"); if(dt) dt.onclick=()=>{ if(confirm(`Delete ${t.id}? Its worktrees and folders under ~/.oscar are removed. Branches and PRs stay.`)) act(()=>deleteTask(t.id)); };
   const mu=$("#mergeUpd"); if(mu) mu.onclick=()=>{ if(confirm(`Merge the ${t.id} PR into Oscar and restart with it?`)) act(()=>api("/api/self/update",{task_id:t.id}),"err-upd"); };
+}
+
+/* ---------- delete ---------- */
+async function deleteTask(id){
+  await api(`/api/tasks/${id}/delete`,{});
+  forget(id);
+  await load();
+}
+// forget drops what the page keeps about a task that is gone.
+function forget(id){
+  delete logs[id]; delete diffs[id];
+  if(selected===id){ selected=null; if(location.hash) history.replaceState(null,"",location.pathname+location.search); }
+}
+async function clearDone(){
+  const ids=S.tasks.filter(t=>t.status==="done"&&(filter==="all"||t.type===filter)).map(t=>t.id);
+  if(!ids.length||!confirm(`Delete ${ids.length} done task${ids.length>1?"s":""} (${ids.join(", ")})? Their worktrees and folders under ~/.oscar are removed. Branches and PRs stay.`)) return;
+  const failed=[];
+  for(const id of ids){ try{ await api(`/api/tasks/${id}/delete`,{}); forget(id); }catch(e){ failed.push(e.message); } }
+  await load();
+  if(failed.length) toast(`${failed.length} task${failed.length>1?"s":""} kept`,failed.join("\n"));
 }
 
 /* ---------- misc ---------- */
