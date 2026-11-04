@@ -111,6 +111,26 @@ func (e *Engine) sendCaptain(text, doing string) error {
 	return s.Send(text)
 }
 
+// captainActor says on whose behalf the Captain acts now: the user's, when the user wrote in
+// the chat after the Captain's last finished turn; otherwise its own.
+func (e *Engine) captainActor() Actor {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.lastUserChat.After(e.capTurnEnded) {
+		return ActorViaCaptain
+	}
+	return ActorCaptain
+}
+
+// captainTurnEnded records that the Captain finished a turn.
+func (e *Engine) captainTurnEnded() {
+	e.mu.Lock()
+	e.capDoing = ""
+	e.capTurnEnded = time.Now()
+	e.publish(Event{Kind: "state"})
+	e.mu.Unlock()
+}
+
 // relayToCaptain tells the Captain that a task needs the user, so the Captain can say it in
 // the chat and pass the user's reply back with answer_worker. The item also stays in the UI.
 func (e *Engine) relayToCaptain(taskID, title string, p store.Pending) {
@@ -166,9 +186,9 @@ func (e *Engine) answerWorker(taskID, pendingID string, d Decision) error {
 			return errors.New("this needs the user's own yes or no: ask them in the chat and pass on their reply")
 		}
 	}
-	d.By = "captain"
+	d.By = ActorCaptain
 	if fromUser {
-		d.By = "user-via-captain"
+		d.By = ActorViaCaptain
 	}
 	return e.Decide(taskID, pendingID, d)
 }
@@ -295,7 +315,7 @@ func (e *Engine) captainTools() []claude.Tool {
 			Handler: func(_ context.Context, raw json.RawMessage) (string, error) {
 				var a struct{ ID, Text string }
 				_ = json.Unmarshal(raw, &a)
-				if err := e.MessageWorker(normalizeID(a.ID), a.Text); err != nil {
+				if err := e.MessageWorker(normalizeID(a.ID), a.Text, e.captainActor()); err != nil {
 					return "", err
 				}
 				return "Sent.", nil
@@ -305,7 +325,7 @@ func (e *Engine) captainTools() []claude.Tool {
 			Handler: func(_ context.Context, raw json.RawMessage) (string, error) {
 				var a struct{ ID, Instruction string }
 				_ = json.Unmarshal(raw, &a)
-				if err := e.Reopen(normalizeID(a.ID), a.Instruction); err != nil {
+				if err := e.Reopen(normalizeID(a.ID), a.Instruction, e.captainActor()); err != nil {
 					return "", err
 				}
 				return "Reopened.", nil
@@ -337,7 +357,7 @@ func (e *Engine) captainTools() []claude.Tool {
 			Handler: func(_ context.Context, raw json.RawMessage) (string, error) {
 				var a struct{ ID string }
 				_ = json.Unmarshal(raw, &a)
-				if err := e.Cancel(normalizeID(a.ID)); err != nil {
+				if err := e.Cancel(normalizeID(a.ID), e.captainActor()); err != nil {
 					return "", err
 				}
 				return "Cancelled.", nil

@@ -22,7 +22,7 @@ func TestVerdictAfterReopen(t *testing.T) {
 	e.tasks[tk.ID] = tk
 	e.resumeHook = func(string, string) {} // do not start a real worker
 
-	if err := e.Reopen(tk.ID, "fix the menu"); err != nil {
+	if err := e.Reopen(tk.ID, "fix the menu", ActorUser); err != nil {
 		t.Fatal(err)
 	}
 	// What submit_for_review does:

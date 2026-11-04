@@ -174,7 +174,7 @@ func (s *Server) message(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err := s.e.MessageWorker(r.PathValue("id"), a.Text); err != nil {
+	if err := s.e.MessageWorker(r.PathValue("id"), a.Text, engine.ActorUser); err != nil {
 		fail(w, err)
 		return
 	}
@@ -182,7 +182,7 @@ func (s *Server) message(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
-	if err := s.e.Cancel(r.PathValue("id")); err != nil {
+	if err := s.e.Cancel(r.PathValue("id"), engine.ActorUser); err != nil {
 		fail(w, err)
 		return
 	}
@@ -238,7 +238,7 @@ func (s *Server) reopen(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err := s.e.Reopen(r.PathValue("id"), a.Text); err != nil {
+	if err := s.e.Reopen(r.PathValue("id"), a.Text, engine.ActorUser); err != nil {
 		fail(w, err)
 		return
 	}

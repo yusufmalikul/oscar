@@ -103,6 +103,9 @@ type Engine struct {
 	// lastUserChat is when the user last wrote in the Captain chat. The Captain may pass on an
 	// approval only when the user wrote after the request appeared.
 	lastUserChat time.Time
+	// capTurnEnded is when the Captain last finished a turn. A user message after it means the
+	// Captain is now working on what the user asked.
+	capTurnEnded time.Time
 
 	// resumeHook replaces resumeWorker in tests.
 	resumeHook func(taskID, msg string)
@@ -271,7 +274,7 @@ func (e *Engine) logLine(taskID, who, kind, text string) {
 	l := store.LogLine{At: time.Now(), Who: who, Kind: kind, Text: redact.String(text)}
 	_ = e.st.AppendLog(taskID, l)
 	e.mu.Lock()
-	if t, ok := e.tasks[taskID]; ok && who != "you" {
+	if t, ok := e.tasks[taskID]; ok && !isPerson(who) {
 		t.LastActivity = l.At // kept in memory; saved with the next task change
 	}
 	e.publish(Event{Kind: "log", TaskID: taskID, Data: l})

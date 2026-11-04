@@ -17,19 +17,44 @@ type Decision struct {
 	Text   string `json:"text"`   // free answer, note, or edited message
 	Option string `json:"option"` // chosen option of a question
 	Always bool   `json:"always"` // tool calls: also remember "always allow" for this kind and subject
-	// By is who decided: "" (the user in the UI), "user-via-captain" or "captain".
-	By string `json:"-"`
+	// By is who decided. Empty means the user in the UI.
+	By Actor `json:"-"`
 }
 
-// who is the log name of the one who decided.
+// Actor is who did something to a task, as the task log shows it.
+type Actor string
+
+const (
+	ActorUser       Actor = "you"               // the user, in the task panel
+	ActorViaCaptain Actor = "you (via Captain)" // the user asked the Captain in the chat
+	ActorCaptain    Actor = "captain"           // the Captain on its own (e.g. after an Oscar event)
+)
+
 func (d Decision) who() string {
-	switch d.By {
-	case "user-via-captain":
-		return "you (via Captain)"
-	case "captain":
-		return "captain"
+	if d.By == "" {
+		return string(ActorUser)
 	}
-	return "you"
+	return string(d.By)
+}
+
+// toWorker is how a message from this actor starts when the worker reads it.
+func (a Actor) toWorker() string {
+	switch a {
+	case ActorViaCaptain:
+		return "Message from the user, passed on by the Captain: "
+	case ActorCaptain:
+		return "Message from the Captain: "
+	}
+	return "Message from the user: "
+}
+
+// isPerson reports whether the actor is the user or the Captain (not a worker, reviewer or Oscar).
+func isPerson(who string) bool {
+	switch Actor(who) {
+	case ActorUser, ActorViaCaptain, ActorCaptain:
+		return true
+	}
+	return false
 }
 
 // Decide resolves a pending item of a task. taskID "" means a Captain item.
@@ -90,7 +115,7 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		e.mu.Unlock()
 		e.logLine(taskID, d.who(), "text", "Q: "+p.Question+"\nA: "+ans)
 		by := "The user answered your question."
-		if d.By == "captain" {
+		if d.By == ActorCaptain {
 			by = "The Captain answered your question for the user, from what the user said earlier."
 		}
 		e.resume(taskID, by+"\nQuestion: "+p.Question+"\nAnswer: "+ans)
@@ -329,7 +354,7 @@ func (e *Engine) EditOutbox(taskID, outboxID, text string) error {
 }
 
 // MessageWorker sends a free message from the user to the worker of a task.
-func (e *Engine) MessageWorker(taskID, text string) error {
+func (e *Engine) MessageWorker(taskID, text string, by Actor) error {
 	e.mu.Lock()
 	t, err := e.task(taskID)
 	if err != nil {
@@ -342,13 +367,13 @@ func (e *Engine) MessageWorker(taskID, text string) error {
 	}
 	e.waiting[taskID] = false
 	e.mu.Unlock()
-	e.logLine(taskID, "you", "text", text)
-	e.resume(taskID, "Message from the user: "+text)
+	e.logLine(taskID, string(by), "text", text)
+	e.resume(taskID, by.toWorker()+text)
 	return nil
 }
 
 // Cancel stops a task. Worktrees are kept so nothing is lost.
-func (e *Engine) Cancel(taskID string) error {
+func (e *Engine) Cancel(taskID string, by Actor) error {
 	e.mu.Lock()
 	t, err := e.task(taskID)
 	if err != nil {
@@ -373,14 +398,14 @@ func (e *Engine) Cancel(taskID string) error {
 	if r != nil {
 		go r.Close()
 	}
-	e.logLine(taskID, "you", "info", "cancelled")
+	e.logLine(taskID, string(by), "info", "cancelled")
 	go e.schedule()
 	return nil
 }
 
 // Reopen continues a finished task in its own session, worktrees and branch, with a new
 // instruction. The review starts over; open_draft_pr then updates the PR that is open.
-func (e *Engine) Reopen(taskID, instruction string) error {
+func (e *Engine) Reopen(taskID, instruction string, by Actor) error {
 	instruction = strings.TrimSpace(instruction)
 	if instruction == "" {
 		return errors.New("say what should change")
@@ -406,8 +431,15 @@ func (e *Engine) Reopen(taskID, instruction string) error {
 	e.save(t)
 	hasPR := len(t.PRs) > 0
 	e.mu.Unlock()
-	e.logLine(taskID, "you", "text", "Reopened: "+instruction)
-	msg := "The user reopened this task. New instruction:\n" + instruction +
+	e.logLine(taskID, string(by), "text", "Reopened: "+instruction)
+	who := "The user"
+	switch by {
+	case ActorViaCaptain:
+		who = "The user (through the Captain)"
+	case ActorCaptain:
+		who = "The Captain"
+	}
+	msg := who + " reopened this task. New instruction:\n" + instruction +
 		"\n\nWork in the same worktree(s) and branch. Call report at the start of each step so the user sees where you are. Prove the change (test or screenshot), commit, then submit_for_review."
 	if hasPR {
 		msg += " After the review passes, call open_draft_pr again: Oscar pushes the branch and the open PR updates. Then finish."
