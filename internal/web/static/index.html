@@ -47,8 +47,12 @@ code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size
 .led{width:8px;height:8px;border-radius:50%;background:var(--done)}
 .iconbtn{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:4px 9px}
 
-.app{display:grid;grid-template-columns:minmax(320px,1fr) 290px minmax(420px,1.2fr);height:calc(100% - 44px)}
-.col{min-height:0;display:flex;flex-direction:column;border-right:1px solid var(--line)}
+.app{display:grid;grid-template-columns:var(--w-chat,minmax(320px,1fr)) 6px var(--w-board,290px) 6px minmax(320px,1.2fr);height:calc(100% - 44px)}
+.gutter{cursor:col-resize;position:relative;background:transparent;touch-action:none}
+.gutter::after{content:"";position:absolute;top:0;bottom:0;left:2px;width:1px;background:var(--line)}
+.gutter:hover::after,.gutter.drag::after{left:1px;width:4px;background:var(--accent)}
+body.resizing{cursor:col-resize;user-select:none}
+.col{min-height:0;min-width:0;display:flex;flex-direction:column}
 .col:last-child{border-right:0}
 .colhead{padding:8px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;background:var(--panel)}
 .colhead h2{font-size:12px;margin:0;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
@@ -138,7 +142,8 @@ pre{background:var(--code);border:1px solid var(--line);border-radius:8px;paddin
 @media (max-width: 900px){
   .hide-m{display:none}
   .app{display:block;height:calc(100% - 44px - 58px)}
-  .col{display:none;height:100%;border-right:0}
+  .col{display:none;height:100%}
+  .gutter{display:none}
   .col.mshow{display:flex}
   .mnav{display:flex;position:fixed;bottom:0;left:0;right:0;height:58px;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
   .mnav button{flex:1;border:0;background:none;font-size:12px;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;position:relative}
@@ -202,11 +207,15 @@ input.txt{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;
     </div>
   </section>
 
+  <div class="gutter" data-g="chat" title="Drag to resize, double-click to reset"></div>
+
   <section class="col" id="colBoard">
     <div class="colhead"><h2>Board</h2></div>
     <div class="filters" id="filters"></div>
     <div class="scroll" id="board"></div>
   </section>
+
+  <div class="gutter" data-g="board" title="Drag to resize, double-click to reset"></div>
 
   <section class="col" id="colDetail">
     <div class="colhead"><h2>Task detail</h2></div>
@@ -502,6 +511,27 @@ $("#themeBtn").onclick=()=>{const r=document.documentElement;const dark=r.datase
 try{const th=localStorage.getItem("oscar.theme"); if(th) document.documentElement.dataset.theme=th;}catch{}
 $("#rulesBtn").onclick=()=>{ selected="rules"; renderBoard(); renderRules(); if(isMobile()) showCol("colDetail"); };
 $("#notifBtn").onclick=()=>{ if(window.Notification) Notification.requestPermission().then(p=>toast("Notifications",p)); };
+const MIN_COL=220;
+function applyCols(w){ const st=document.querySelector(".app").style;
+  w&&w.chat?st.setProperty("--w-chat",w.chat+"px"):st.removeProperty("--w-chat");
+  w&&w.board?st.setProperty("--w-board",w.board+"px"):st.removeProperty("--w-board"); }
+let colW=(()=>{try{return JSON.parse(localStorage.getItem("oscar.cols"))||{}}catch{return{}}})();
+applyCols(colW);
+document.querySelectorAll(".gutter").forEach(g=>{
+  g.addEventListener("pointerdown",e=>{
+    e.preventDefault(); g.setPointerCapture(e.pointerId); g.classList.add("drag"); document.body.classList.add("resizing");
+    const app=$(".app").getBoundingClientRect(), chat=$("#colChat").getBoundingClientRect().width, board=$("#colBoard").getBoundingClientRect().width;
+    const x0=e.clientX, total=app.width-12;
+    const move=ev=>{ const dx=ev.clientX-x0;
+      if(g.dataset.g==="chat"){ const c=Math.max(MIN_COL,Math.min(chat+dx,total-board-MIN_COL)); colW={...colW,chat:Math.round(c),board:Math.round(board)}; }
+      else { const b=Math.max(MIN_COL,Math.min(board+dx,total-chat-MIN_COL)); colW={...colW,chat:Math.round(chat),board:Math.round(b)}; }
+      applyCols(colW); };
+    const up=()=>{ g.classList.remove("drag"); document.body.classList.remove("resizing"); g.removeEventListener("pointermove",move); g.removeEventListener("pointerup",up); g.removeEventListener("pointercancel",up);
+      try{localStorage.setItem("oscar.cols",JSON.stringify(colW))}catch{} };
+    g.addEventListener("pointermove",move); g.addEventListener("pointerup",up); g.addEventListener("pointercancel",up);
+  });
+  g.addEventListener("dblclick",()=>{ colW={}; applyCols(colW); try{localStorage.removeItem("oscar.cols")}catch{} });
+});
 function fromHash(){ const id=decodeURIComponent(location.hash.slice(1)); if(id&&task(id)){ const g=task(id).status; collapsed[g]=false; select(id); } }
 window.addEventListener("hashchange",fromHash);
 load().then(()=>{ renderChat(true); fromHash(); connect(); }).catch(e=>toast("Oscar is not reachable",e.message));
