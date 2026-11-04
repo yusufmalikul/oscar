@@ -3,6 +3,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"net/http"
 	"strconv"
@@ -30,6 +31,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/message", s.message)
 	mux.HandleFunc("POST /api/tasks/{id}/cancel", s.cancel)
 	mux.HandleFunc("POST /api/tasks/{id}/reopen", s.reopen)
+	mux.HandleFunc("POST /api/tasks/{id}/delete", s.deleteTask)
 	mux.HandleFunc("POST /api/tasks/{id}/outbox/{oid}", s.editOutbox)
 	mux.HandleFunc("POST /api/captain/decide", s.decideCaptain)
 	mux.HandleFunc("POST /api/self/update", s.selfUpdate)
@@ -64,7 +66,11 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 func fail(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
+	code := http.StatusBadRequest
+	if errors.Is(err, engine.ErrTaskNotFound) {
+		code = http.StatusNotFound
+	}
+	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
 
@@ -239,6 +245,14 @@ func (s *Server) reopen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.e.Reopen(r.PathValue("id"), a.Text, engine.ActorUser); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
+	if err := s.e.Delete(r.PathValue("id")); err != nil {
 		fail(w, err)
 		return
 	}

@@ -272,8 +272,16 @@ func (e *Engine) save(t *store.Task) {
 
 func (e *Engine) logLine(taskID, who, kind, text string) {
 	l := store.LogLine{At: time.Now(), Who: who, Kind: kind, Text: redact.String(text)}
+	e.mu.Lock()
+	_, ok := e.tasks[taskID]
+	if !ok {
+		e.mu.Unlock()
+		return // deleted: do not bring its folder back
+	}
+	e.mu.Unlock()
 	_ = e.st.AppendLog(taskID, l)
 	e.mu.Lock()
+	// Look the task up again: it may have been deleted while the lock was released.
 	if t, ok := e.tasks[taskID]; ok && !isPerson(who) {
 		t.LastActivity = l.At // kept in memory; saved with the next task change
 	}
@@ -332,10 +340,13 @@ func (e *Engine) Log(taskID string) ([]store.LogLine, error) { return e.st.ReadL
 
 // ---------- helpers ----------
 
+// ErrTaskNotFound is returned for an id that is not on the board (never made, or deleted).
+var ErrTaskNotFound = errors.New("task not found")
+
 func (e *Engine) task(id string) (*store.Task, error) {
 	t, ok := e.tasks[id]
 	if !ok {
-		return nil, fmt.Errorf("no task %s", id)
+		return nil, fmt.Errorf("%w: %s", ErrTaskNotFound, id)
 	}
 	return t, nil
 }
