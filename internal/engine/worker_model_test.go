@@ -33,7 +33,6 @@ func TestCaptainChoosesWorkerModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.captainHook = func(string) {} // the fake worker stops at once; keep its escalation away from a real Captain
 	create := func(args map[string]string) (string, error) {
 		for _, tool := range e.captainTools() {
 			if tool.Name == "create_task" {

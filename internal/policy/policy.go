@@ -15,6 +15,7 @@ package policy
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -157,6 +158,9 @@ func checkEdit(c Context, input json.RawMessage) Decision {
 	if under(p, c.WriteRoots) {
 		return Decision{Action: Allow, Reason: "inside the task workspace"}
 	}
+	if under(p, tempRoots()) {
+		return Decision{Action: Allow, Reason: "temp file"}
+	}
 	if c.Role == Reviewer {
 		return Decision{Action: Deny, Reason: "The reviewer does not change the work. Write notes in your scratch dir and report findings with the verdict tool."}
 	}
@@ -173,6 +177,18 @@ func checkEdit(c Context, input json.RawMessage) Decision {
 		}
 	}
 	return Decision{Gate, "edit outside the task workspace: " + p, "edit-outside", dir}
+}
+
+// tempRoots are the system temp dirs. Files there are scratch work, so editing them is safe.
+func tempRoots() []string {
+	roots := []string{"/tmp", "/private/tmp"}
+	if d := filepath.Clean(os.TempDir()); d != "" && d != "/" {
+		roots = append(roots, d)
+		if strings.HasPrefix(d, "/var/") {
+			roots = append(roots, "/private"+d) // macOS: /var is a link to /private/var
+		}
+	}
+	return roots
 }
 
 func under(p string, roots []string) bool {

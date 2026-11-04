@@ -48,6 +48,9 @@ long-running monitor tasks, approval chains, a remote-access setup guide, and we
   the chat and passes your reply back (`answer_worker`). Approvals need your own reply in the
   chat, written after the request appeared; the Captain cannot give them alone. The item also
   stays in the task panel, so you can still answer it there.
+- The Captain's own gated calls do not pop up. Oscar refuses them with a request id; the Captain
+  finds another way or asks you in the chat, and after your yes runs the same call once
+  (`approve_own`). Temp files (`/tmp`, the Captain's `~/.oscar/captain`) need no approval.
 - State is kept in `~/.oscar` as one folder per task. After a restart, Oscar resumes the
   Claude sessions where they stopped.
 - Secrets are masked in logs, chat and task text.

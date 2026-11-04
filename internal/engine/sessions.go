@@ -111,6 +111,10 @@ func (e *Engine) startSession(sp sessionSpec) (*claude.Session, error) {
 		Tools:              sp.tools,
 		PreToolUse: func(ctx context.Context, in claude.HookInput) claude.HookDecision {
 			d := policy.Check(sp.pctx, in.ToolName, in.ToolInput)
+			if d.Action != policy.Deny && sp.role == policy.Captain && e.takeCapGrant(in.ToolName, toolDetail(in.ToolName, in.ToolInput)) {
+				e.chat("oscar", "Captain ran what you approved: "+truncate(redact.String(toolDetail(in.ToolName, in.ToolInput)), 300))
+				return claude.HookDecision{Decision: "allow", Reason: "the user approved this in the chat"}
+			}
 			switch d.Action {
 			case policy.Allow:
 				return claude.HookDecision{Decision: "allow", Reason: d.Reason}
@@ -145,6 +149,9 @@ func (e *Engine) approveTool(ctx context.Context, sp sessionSpec, req claude.Per
 	detail := toolDetail(req.ToolName, req.Input)
 	// Compute the gate before taking the lock: it reads the always-allow rules, which lock too.
 	pd := policy.Check(sp.pctx, req.ToolName, req.Input)
+	if sp.taskID == "" && sp.role == policy.Captain {
+		return e.captainGate(req, detail, pd)
+	}
 	e.mu.Lock()
 	if sp.taskID != "" && req.ToolName == "Bash" {
 		for _, c := range e.planCmds[sp.taskID] {

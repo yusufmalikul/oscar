@@ -88,7 +88,9 @@ type Engine struct {
 	finished  map[string]bool          // task id → worker called finish
 	lastText  map[string]string        // task id → last worker text (for escalations)
 	queued    map[string]int           // task id → messages sent to the worker whose turn has not ended
-	capPend   []store.Pending          // gated actions of the Captain
+	capPend   []store.Pending          // things the Captain proposed that wait for the user (new task types)
+	capAsks   map[string]capAsk        // request id → a gated call the Captain must ask the user about
+	capGrants map[string]time.Time     // tool+detail → when the user's yes for one Captain call was given
 	captain   *claude.Session
 	capDoing  string // what the Captain is doing now, e.g. "Captain is replying…"; "" when idle
 	subs      map[chan Event]struct{}
@@ -111,6 +113,9 @@ type Engine struct {
 	Restart func()
 }
 
+// testCaptainHook is set by the tests, so no test starts a real Captain (a claude process).
+var testCaptainHook func(msg string)
+
 func New(ctx context.Context, cfg config.Config) (*Engine, error) {
 	st, err := store.Open(cfg.DataDir)
 	if err != nil {
@@ -120,6 +125,7 @@ func New(ctx context.Context, cfg config.Config) (*Engine, error) {
 		tasks: map[string]*store.Task{}, types: map[string]*TaskType{},
 		workers: map[string]*claude.Session{}, reviewers: map[string]*claude.Session{},
 		waiting: map[string]bool{}, waiters: map[string]chan decision{}, planCmds: map[string][]string{},
+		capAsks: map[string]capAsk{}, capGrants: map[string]time.Time{}, captainHook: testCaptainHook,
 		finished: map[string]bool{}, lastText: map[string]string{}, queued: map[string]int{}, subs: map[chan Event]struct{}{},
 	}
 	_ = st.Value(allowFile, &e.allow)

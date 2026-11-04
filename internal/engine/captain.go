@@ -32,11 +32,16 @@ func (e *Engine) startCaptain() error {
 		types = append(types, t)
 	}
 	sort.Slice(types, func(i, j int) bool { return types[i].Name < types[j].Name })
-	prompt := e.renderPrompt("captain.md", map[string]any{"Types": types, "Repos": e.repoNames, "Rules": e.cfg.Rules(), "Self": e.cfg.Self.Repo})
+	prompt := e.renderPrompt("captain.md", map[string]any{"Types": types, "Repos": e.repoNames, "Rules": e.cfg.Rules(), "Self": e.cfg.Self.Repo,
+		"Scratch": e.captainScratch()})
 	e.mu.Unlock()
 
+	scratch := e.captainScratch()
+	if err := os.MkdirAll(scratch, 0o700); err != nil {
+		return err
+	}
 	sp := sessionSpec{role: policy.Captain, tools: e.captainTools(), prompt: prompt, resume: saved.SessionID, rc: e.cfg.Captain,
-		pctx: policy.Context{Role: policy.Captain}}
+		addDirs: []string{scratch}, pctx: policy.Context{Role: policy.Captain, WriteRoots: []string{scratch}}}
 	s, err := e.startSession(sp)
 	if err != nil && saved.SessionID != "" {
 		// A broken saved session should not block the Captain forever.
@@ -326,6 +331,7 @@ func (e *Engine) captainTools() []claude.Tool {
 				}
 				return "Passed on to the worker.", nil
 			}},
+		e.approveOwnTool(),
 		{Name: "cancel_task", Description: "Cancel a task (only when the user asks).",
 			Schema: obj(map[string]any{"id": str}, "id"),
 			Handler: func(_ context.Context, raw json.RawMessage) (string, error) {
