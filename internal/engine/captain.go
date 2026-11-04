@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"oscar/internal/claude"
 	"oscar/internal/policy"
@@ -69,6 +71,18 @@ func (e *Engine) Chat(text string) error {
 	}
 	e.chat("user", text)
 	e.mu.Lock()
+	e.lastUserChat = time.Now()
+	e.mu.Unlock()
+	return e.sendCaptain(text)
+}
+
+// sendCaptain sends a message to the Captain, starting it when it is not running.
+func (e *Engine) sendCaptain(text string) error {
+	if e.captainHook != nil {
+		e.captainHook(text)
+		return nil
+	}
+	e.mu.Lock()
 	s := e.captain
 	e.mu.Unlock()
 	if s == nil {
@@ -85,6 +99,68 @@ func (e *Engine) Chat(text string) error {
 	e.publish(Event{Kind: "state"})
 	e.mu.Unlock()
 	return s.Send(text)
+}
+
+// relayToCaptain tells the Captain that a task needs the user, so the Captain can say it in
+// the chat and pass the user's reply back with answer_worker. The item also stays in the UI.
+func (e *Engine) relayToCaptain(taskID, title string, p store.Pending) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "[Oscar event, not from the user] %s (%s) needs the user.\n", taskID, title)
+	fmt.Fprintf(&b, "pending_id: %s\nkind: %s\n", p.ID, p.Kind)
+	if p.Tool != "" {
+		fmt.Fprintf(&b, "tool: %s\n", p.Tool)
+	}
+	fmt.Fprintf(&b, "question: %s\n", p.Question)
+	if len(p.Options) > 0 {
+		fmt.Fprintf(&b, "options: %s\n", strings.Join(p.Options, " | "))
+	}
+	if p.Detail != "" {
+		fmt.Fprintf(&b, "detail:\n%s\n", truncate(p.Detail, 1500))
+	}
+	b.WriteString("\nTell the user in the chat, in plain words and a few short lines, what the worker needs and the choices " +
+		"(for a command: what it does and what it may change). Then pass their reply on with answer_worker. " +
+		"If the user already answered this clearly earlier in this chat and it is a question (not an approval), you may answer it " +
+		"yourself with answer_worker and tell the user what you answered.")
+	if err := e.sendCaptain(b.String()); err != nil {
+		log.Printf("relay %s to the Captain: %v", taskID, err)
+	}
+}
+
+// answerWorker resolves a task's pending item for the Captain. Approvals that act outside
+// (a gated command, an ops plan, a post, closing a PR) need a reply from the user in the chat
+// written after the item appeared; the Captain cannot give them on its own.
+func (e *Engine) answerWorker(taskID, pendingID string, d Decision) error {
+	e.mu.Lock()
+	t, err := e.task(taskID)
+	if err != nil {
+		e.mu.Unlock()
+		return err
+	}
+	var p *store.Pending
+	for i := range t.Pending {
+		if t.Pending[i].ID == pendingID {
+			p = &t.Pending[i]
+		}
+	}
+	if p == nil {
+		e.mu.Unlock()
+		return errors.New("that item is no longer waiting (the user may have answered it in the UI); check get_task")
+	}
+	fromUser := e.lastUserChat.After(p.Created)
+	kind := p.Kind
+	e.mu.Unlock()
+	switch kind {
+	case store.PendingQuestion, store.PendingEscalate:
+	default:
+		if !fromUser {
+			return errors.New("this needs the user's own yes or no: ask them in the chat and pass on their reply")
+		}
+	}
+	d.By = "captain"
+	if fromUser {
+		d.By = "user-via-captain"
+	}
+	return e.Decide(taskID, pendingID, d)
 }
 
 // tellCaptainDone lets the Captain suggest a follow-up. It stays silent when there is none.
@@ -222,6 +298,27 @@ func (e *Engine) captainTools() []claude.Tool {
 					return "", err
 				}
 				return "Reopened.", nil
+			}},
+		{Name: "answer_worker", Description: "Pass the user's reply to something a worker needs (a question, a command to approve, an ops plan, a message to post, an escalation). " +
+			"pending_id comes from the Oscar event or get_task. For a question: option and/or text. For approvals: allow true or false, text as a note " +
+			"(for a post, text replaces the message). always=true only when the user says to always allow it. Approvals need the user's reply in this chat.",
+			Schema: obj(map[string]any{"id": str, "pending_id": str, "allow": map[string]any{"type": "boolean"}, "option": str, "text": str,
+				"always": map[string]any{"type": "boolean"}}, "id", "pending_id"),
+			Handler: func(_ context.Context, raw json.RawMessage) (string, error) {
+				var a struct {
+					ID           string `json:"id"`
+					PendingID    string `json:"pending_id"`
+					Allow        bool   `json:"allow"`
+					Option, Text string
+					Always       bool `json:"always"`
+				}
+				if err := json.Unmarshal(raw, &a); err != nil {
+					return "", err
+				}
+				if err := e.answerWorker(normalizeID(a.ID), a.PendingID, Decision{Allow: a.Allow, Option: a.Option, Text: a.Text, Always: a.Always}); err != nil {
+					return "", err
+				}
+				return "Passed on to the worker.", nil
 			}},
 		{Name: "cancel_task", Description: "Cancel a task (only when the user asks).",
 			Schema: obj(map[string]any{"id": str}, "id"),

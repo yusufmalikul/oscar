@@ -17,6 +17,19 @@ type Decision struct {
 	Text   string `json:"text"`   // free answer, note, or edited message
 	Option string `json:"option"` // chosen option of a question
 	Always bool   `json:"always"` // tool calls: also remember "always allow" for this kind and subject
+	// By is who decided: "" (the user in the UI), "user-via-captain" or "captain".
+	By string `json:"-"`
+}
+
+// who is the log name of the one who decided.
+func (d Decision) who() string {
+	switch d.By {
+	case "user-via-captain":
+		return "you (via Captain)"
+	case "captain":
+		return "captain"
+	}
+	return "you"
 }
 
 // Decide resolves a pending item of a task. taskID "" means a Captain item.
@@ -55,7 +68,7 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 			}
 		}
 		ch <- decision{allow: d.Allow, note: d.Text}
-		e.logLine(taskID, "you", "info", fmt.Sprintf("%s: %s", map[bool]string{true: "allowed", false: "denied"}[d.Allow], p.Detail))
+		e.logLine(taskID, d.who(), "info", fmt.Sprintf("%s: %s", map[bool]string{true: "allowed", false: "denied"}[d.Allow], p.Detail))
 		return nil
 
 	case store.PendingQuestion:
@@ -75,8 +88,12 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		e.settle(t)
 		e.save(t)
 		e.mu.Unlock()
-		e.logLine(taskID, "you", "text", "Q: "+p.Question+"\nA: "+ans)
-		e.resume(taskID, "The user answered your question.\nQuestion: "+p.Question+"\nAnswer: "+ans)
+		e.logLine(taskID, d.who(), "text", "Q: "+p.Question+"\nA: "+ans)
+		by := "The user answered your question."
+		if d.By == "captain" {
+			by = "The Captain answered your question for the user, from what the user said earlier."
+		}
+		e.resume(taskID, by+"\nQuestion: "+p.Question+"\nAnswer: "+ans)
 		return nil
 
 	case store.PendingPlan:
@@ -107,7 +124,7 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		e.settle(t)
 		e.save(t)
 		e.mu.Unlock()
-		e.logLine(taskID, "you", "info", logMsg)
+		e.logLine(taskID, d.who(), "info", logMsg)
 		e.resume(taskID, msg)
 		return nil
 
@@ -128,7 +145,7 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 			e.settle(t)
 			e.save(t)
 			e.mu.Unlock()
-			e.logLine(taskID, "you", "info", "skipped message to "+item.Target)
+			e.logLine(taskID, d.who(), "info", "skipped message to "+item.Target)
 			return nil
 		}
 		if txt := strings.TrimSpace(d.Text); txt != "" && txt != item.Text {
@@ -159,7 +176,7 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		e.save(t)
 		e.mu.Unlock()
 		if !d.Allow {
-			e.logLine(taskID, "you", "info", "kept the old PR "+in.URL)
+			e.logLine(taskID, d.who(), "info", "kept the old PR "+in.URL)
 			return nil
 		}
 		comment := "Superseded: this work moved to branch " + in.New + "."
@@ -195,7 +212,7 @@ func (e *Engine) Decide(taskID, pendingID string, d Decision) error {
 		if reply == "" {
 			reply = "Continue."
 		}
-		e.logLine(taskID, "you", "text", reply)
+		e.logLine(taskID, d.who(), "text", reply)
 		if retryReview {
 			go e.startReviewer(taskID, "")
 		} else {

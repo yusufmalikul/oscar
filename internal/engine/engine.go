@@ -98,8 +98,14 @@ type Engine struct {
 	allow     []AllowRule
 	version   string
 
+	// lastUserChat is when the user last wrote in the Captain chat. The Captain may pass on an
+	// approval only when the user wrote after the request appeared.
+	lastUserChat time.Time
+
 	// resumeHook replaces resumeWorker in tests.
 	resumeHook func(taskID, msg string)
+	// captainHook replaces sending to the Captain session in tests.
+	captainHook func(msg string)
 
 	// Restart is set by the server: it shuts down and exits with ExitRestart.
 	Restart func()
@@ -387,6 +393,7 @@ func (e *Engine) needsYou(t *store.Task, p store.Pending) {
 	t.Status = store.StatusNeedsYou
 	e.save(t)
 	go e.notify(t.ID+" needs you", p.Question)
+	go e.relayToCaptain(t.ID, t.Title, p)
 }
 
 func (e *Engine) removePending(t *store.Task, id string) (store.Pending, bool) {

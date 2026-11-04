@@ -44,6 +44,10 @@ long-running monitor tasks, approval chains, a remote-access setup guide, and we
   pushing to main/master wait for your approval. When the review passes, Oscar pushes the
   branch and opens a draft PR through an integration script.
 - The Captain picks each worker's model and effort (`create_task`), within the defaults you set.
+- When a worker needs you (a question, an approval, a message to post), the Captain tells you in
+  the chat and passes your reply back (`answer_worker`). Approvals need your own reply in the
+  chat, written after the request appeared; the Captain cannot give them alone. The item also
+  stays in the task panel, so you can still answer it there.
 - State is kept in `~/.oscar` as one folder per task. After a restart, Oscar resumes the
   Claude sessions where they stopped.
 - Secrets are masked in logs, chat and task text.
