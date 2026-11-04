@@ -47,7 +47,7 @@ code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size
 .led{width:8px;height:8px;border-radius:50%;background:var(--done)}
 .iconbtn{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:4px 9px}
 
-.app{display:grid;grid-template-columns:290px minmax(320px,1fr) minmax(420px,1.2fr);height:calc(100% - 44px)}
+.app{display:grid;grid-template-columns:minmax(320px,1fr) 290px minmax(420px,1.2fr);height:calc(100% - 44px)}
 .col{min-height:0;display:flex;flex-direction:column;border-right:1px solid var(--line)}
 .col:last-child{border-right:0}
 .colhead{padding:8px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;background:var(--panel)}
@@ -191,12 +191,6 @@ input.txt{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;
 </header>
 
 <main class="app">
-  <section class="col" id="colBoard">
-    <div class="colhead"><h2>Board</h2></div>
-    <div class="filters" id="filters"></div>
-    <div class="scroll" id="board"></div>
-  </section>
-
   <section class="col mshow" id="colChat">
     <div class="colhead"><h2>Captain</h2><span id="capBadge" style="margin-left:auto"></span></div>
     <div id="capPend"></div>
@@ -208,6 +202,12 @@ input.txt{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;
     </div>
   </section>
 
+  <section class="col" id="colBoard">
+    <div class="colhead"><h2>Board</h2></div>
+    <div class="filters" id="filters"></div>
+    <div class="scroll" id="board"></div>
+  </section>
+
   <section class="col" id="colDetail">
     <div class="colhead"><h2>Task detail</h2></div>
     <div class="scroll" id="detail"><div class="empty">Pick a task on the board</div></div>
@@ -215,8 +215,8 @@ input.txt{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;
 </main>
 
 <nav class="mnav">
-  <button data-col="colBoard"><span class="ic">▦</span>Board<span class="nb" id="nbNeed"></span></button>
   <button data-col="colChat" class="on"><span class="ic">💬</span>Captain</button>
+  <button data-col="colBoard"><span class="ic">▦</span>Board<span class="nb" id="nbNeed"></span></button>
   <button data-col="colDetail"><span class="ic">◧</span>Detail</button>
 </nav>
 
