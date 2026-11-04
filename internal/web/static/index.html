@@ -279,7 +279,7 @@ function renderHealth(){
   $("#hVersion").innerHTML=h.updating?`<span class="badge b-run">updating: ${esc(h.updating)}</span>`
     :h.self_repo?`<span class="small mono">${esc(h.version||"")}</span> <button class="btn sm" id="updBtn" title="Pull ${esc(h.self_repo)} main, test, build and restart">Update</button>`:"";
   const ub=$("#updBtn"); if(ub) ub.onclick=()=>{ if(confirm("Pull the latest main of Oscar, run tests, build and restart? Running tasks resume after the restart.")) act(()=>api("/api/self/update",{})); };
-  $("#thinking").textContent=h.captain_busy?"Captain is working…":"";
+  $("#thinking").textContent=h.captain_busy?(h.captain_doing||"Captain is replying…"):"";
 }
 
 /* ---------- board ---------- */

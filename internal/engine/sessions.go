@@ -323,7 +323,7 @@ func (e *Engine) turnEnded(sp sessionSpec, isError bool, result string) {
 	switch sp.role {
 	case policy.Captain:
 		e.mu.Lock()
-		e.capBusy = false
+		e.capDoing = ""
 		e.publish(Event{Kind: "state"})
 		e.mu.Unlock()
 		if isError {

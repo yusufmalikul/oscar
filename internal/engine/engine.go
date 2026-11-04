@@ -90,7 +90,7 @@ type Engine struct {
 	queued    map[string]int           // task id → messages sent to the worker whose turn has not ended
 	capPend   []store.Pending          // gated actions of the Captain
 	captain   *claude.Session
-	capBusy   bool
+	capDoing  string // what the Captain is doing now, e.g. "Captain is replying…"; "" when idle
 	subs      map[chan Event]struct{}
 	repoNames []string
 	updating  string // current self-update step, "" when idle
@@ -314,7 +314,7 @@ func (e *Engine) Snapshot(chatFrom int) State {
 	return State{Tasks: ts, Types: e.types, Chat: chat, ChatMore: more, CapPending: append([]store.Pending{}, e.capPend...),
 		Health: map[string]any{
 			"workers": len(e.workers), "reviewers": len(e.reviewers), "max_workers": e.cfg.MaxWorkers,
-			"captain": e.captain != nil, "captain_busy": e.capBusy,
+			"captain": e.captain != nil, "captain_busy": e.capDoing != "", "captain_doing": e.capDoing,
 			"chat_page": ChatPage, "allow_rules": len(e.allow), "self_repo": e.cfg.Self.Repo, "updating": e.updating, "version": e.version,
 		}}
 }

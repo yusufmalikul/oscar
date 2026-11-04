@@ -107,3 +107,19 @@ func TestCaptainAnswersQuestion(t *testing.T) {
 		t.Error("the question is still pending")
 	}
 }
+
+// The status line says what the Captain is doing, not only that it is busy.
+func TestCaptainStatusSaysWhatItDoes(t *testing.T) {
+	e, _ := relayEngine(t)
+	doing := func() string { s, _ := e.Snapshot(0).Health["captain_doing"].(string); return s }
+	if err := e.Chat("halo"); err != nil {
+		t.Fatal(err)
+	}
+	if got := doing(); !strings.Contains(got, "replying") {
+		t.Errorf("after a user message: %q", got)
+	}
+	e.relayToCaptain("Item-3", "Check logs", store.Pending{ID: "p1", Kind: store.PendingQuestion, Question: "Which env?"})
+	if got := doing(); !strings.Contains(got, "Item-3") {
+		t.Errorf("after a worker request: %q", got)
+	}
+}

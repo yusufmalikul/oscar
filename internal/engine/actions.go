@@ -294,7 +294,8 @@ func (e *Engine) decideCaptain(pendingID string, d Decision) error {
 		}
 		if s != nil {
 			e.mu.Lock()
-			e.capBusy = true
+			e.capDoing = "Captain is reading your decision on the new task type…"
+			e.publish(Event{Kind: "state"})
 			e.mu.Unlock()
 			_ = s.Send(note)
 		}

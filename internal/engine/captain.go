@@ -55,7 +55,7 @@ func (e *Engine) startCaptain() error {
 		e.mu.Lock()
 		if e.captain == s {
 			e.captain = nil
-			e.capBusy = false
+			e.capDoing = ""
 		}
 		e.publish(Event{Kind: "state"})
 		e.mu.Unlock()
@@ -73,11 +73,16 @@ func (e *Engine) Chat(text string) error {
 	e.mu.Lock()
 	e.lastUserChat = time.Now()
 	e.mu.Unlock()
-	return e.sendCaptain(text)
+	return e.sendCaptain(text, "Captain is replying…")
 }
 
 // sendCaptain sends a message to the Captain, starting it when it is not running.
-func (e *Engine) sendCaptain(text string) error {
+// doing is shown in the UI while the Captain works on it.
+func (e *Engine) sendCaptain(text, doing string) error {
+	e.mu.Lock()
+	e.capDoing = doing
+	e.publish(Event{Kind: "state"})
+	e.mu.Unlock()
 	if e.captainHook != nil {
 		e.captainHook(text)
 		return nil
@@ -87,6 +92,10 @@ func (e *Engine) sendCaptain(text string) error {
 	e.mu.Unlock()
 	if s == nil {
 		if err := e.startCaptain(); err != nil {
+			e.mu.Lock()
+			e.capDoing = ""
+			e.publish(Event{Kind: "state"})
+			e.mu.Unlock()
 			e.chat("oscar", "The Captain could not start: "+err.Error())
 			return err
 		}
@@ -94,10 +103,6 @@ func (e *Engine) sendCaptain(text string) error {
 		s = e.captain
 		e.mu.Unlock()
 	}
-	e.mu.Lock()
-	e.capBusy = true
-	e.publish(Event{Kind: "state"})
-	e.mu.Unlock()
 	return s.Send(text)
 }
 
@@ -121,7 +126,7 @@ func (e *Engine) relayToCaptain(taskID, title string, p store.Pending) {
 		"(for a command: what it does and what it may change). Then pass their reply on with answer_worker. " +
 		"If the user already answered this clearly earlier in this chat and it is a question (not an approval), you may answer it " +
 		"yourself with answer_worker and tell the user what you answered.")
-	if err := e.sendCaptain(b.String()); err != nil {
+	if err := e.sendCaptain(b.String(), "Captain is passing on what "+taskID+" needs…"); err != nil {
 		log.Printf("relay %s to the Captain: %v", taskID, err)
 	}
 }
@@ -173,7 +178,8 @@ func (e *Engine) tellCaptainDone(taskID string) {
 		return
 	}
 	note := fmt.Sprintf("[Oscar event, not from the user] %s (%s) is done: %s", t.ID, t.Title, truncate(t.Summary, 800))
-	e.capBusy = true
+	e.capDoing = "Captain is checking what " + t.ID + " finished…"
+	e.publish(Event{Kind: "state"})
 	e.mu.Unlock()
 	_ = s.Send(note + "\n\nCheck the user's goal behind this task (what they asked for in this chat). If the goal is not reached yet, " +
 		"take the next step now: reopen_task when the fix belongs to a task that already exists (for example re-run a verify task after its " +
